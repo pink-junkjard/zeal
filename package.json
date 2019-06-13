@@ -1,0 +1,17 @@
+{
+  "scripts": {
+    "deps": "yarn install",
+    "watch": "shadow-cljs -A:dev/cljs watch app;",
+    "release": "shadow-cljs release app;",
+    "server": "shadow-cljs server;",
+    "clean": "rm -rf target; rm -rf public/js/compiled"
+  },
+  "devDependencies": {
+    "shadow-cljs": "^2.8.37"
+  },
+  "dependencies": {
+    "install": "^0.12.2",
+    "react": "^16.8.6",
+    "react-dom": "^16.8.6"
+  }
+}

@@ -1,0 +1,32 @@
+{:paths
+ ["resources" "src"]
+ :deps
+ {org.clojure/clojure {:mvn/version "RELEASE"}
+  mount               {:mvn/version "0.1.16"}
+
+  medley              {:mvn/version "1.1.0"} ; needed?
+
+  aleph               {:mvn/version "0.4.6"}
+  yada                {:mvn/version "1.2.15"} ; needed?
+  bidi                {:mvn/version "2.1.6"} ; needed?
+
+
+  garden              {:mvn/version "1.3.9"} ; needed?
+  uix.core            {:local/root "../clojure/uix/core"}
+  uix.dom             {:local/root "../clojure/uix/dom"}
+
+  juxt/crux           {:mvn/version "19.04-1.0.3-alpha"}
+
+  ;; utils
+  camel-snake-kebab   {:mvn/version "0.4.0"}
+  }
+ :aliases
+ {:dev
+  {:extra-paths ["dev"]}
+  :dev/cljs
+  {:extra-deps
+   {thheller/shadow-cljs {:mvn/version "2.8.37"}
+    binaryage/devtools   {:mvn/version "0.9.10"}}}}
+ :test
+ {:extra-paths ["test"]
+  :extra-deps  {org.clojure/test.check {:mvn/version "RELEASE"}}}}
