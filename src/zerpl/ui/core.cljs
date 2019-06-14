@@ -1,5 +1,6 @@
 (ns zerpl.ui.core
   (:require [uix.dom.alpha :as uix.dom]
+            [zerpl.ui.talk]
             [zerpl.ui.views :as views]))
 
 (defn start []
