@@ -1,7 +1,7 @@
-(ns zerpl.ui.core
+(ns zeal.ui.core
   (:require [uix.dom.alpha :as uix.dom]
-            [zerpl.ui.talk]
-            [zerpl.ui.views :as views]))
+            [zeal.ui.talk]
+            [zeal.ui.views :as views]))
 
 (defn start []
   ;(mixed-media/render-example)

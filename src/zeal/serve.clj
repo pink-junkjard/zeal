@@ -1,12 +1,12 @@
-(ns zerpl.serve
+(ns zeal.serve
   (:require [aleph.http :as http]
             [mount.core :as mount :refer [defstate]]
             [manifold.stream :as s]
             [aleph.http.client-middleware :refer [parse-transit transit-encode]]
             [uix.dom.alpha :as uix.dom]
-            [zerpl.ui.views :as views]
+            [zeal.ui.views :as views]
             [clojure.core.async :as a]
-            [zerpl.core :as zc]
+            [zeal.core :as zc]
             [manifold.deferred :as d]
             [byte-streams :as bs]))
 
@@ -22,7 +22,7 @@
     {:styles []
      :links  ["css/tachyons.css"]
      :js     [{:src "js/compiled/main.js"}
-              {:script "zerpl.ui.core.init()"}]}]])
+              {:script "zeal.ui.core.init()"}]}]])
 
 (defn index []
   (let [res (s/stream)]

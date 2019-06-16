@@ -1,4 +1,4 @@
-(ns zerpl.data)
+(ns zeal.data)
 
 (def data
   [

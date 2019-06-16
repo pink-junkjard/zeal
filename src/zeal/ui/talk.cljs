@@ -1,6 +1,6 @@
-(ns zerpl.ui.talk
+(ns zeal.ui.talk
   (:require
-   [zerpl.util.ws :as ws]
+   [zeal.util.ws :as ws]
    [cognitect.transit :as t]
    [cljs.core.async :as a :refer [go <!]]
    [cljs-http.client :as http]))

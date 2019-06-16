@@ -1,4 +1,4 @@
-(ns zerpl.ui.state
+(ns zeal.ui.state
   (:require [uix.core.alpha :as uix]))
 
 (defonce db (atom {:search-query ""}))

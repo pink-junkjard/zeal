@@ -1,4 +1,4 @@
-(ns zerpl.util)
+(ns zeal.util)
 
 (defn project
   ([f coll] (project {} f coll))

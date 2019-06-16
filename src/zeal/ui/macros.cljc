@@ -1,7 +1,7 @@
-(ns zerpl.ui.macros)
+(ns zeal.ui.macros)
 
 (comment
  (defmacro cur-roman-gen []
    #?(:clj
-      (-> (zerpl.core/current-generation)
+      (-> (zeal.core/current-generation)
           (gn/->roman)))))

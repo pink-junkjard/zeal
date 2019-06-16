@@ -1,8 +1,8 @@
-(ns zerpl.core
+(ns zeal.core
   (:require
    ;[crux.api :as crux]
    [mount.core :as mount :refer [defstate]]
-   [zerpl.data :refer [data]])
+   [zeal.data :refer [data]])
   (:import                              ;(crux.api ICruxAPI)
    (java.util Date UUID)))
 
@@ -63,7 +63,8 @@
   (search q @eval-log [:snippet :result]))
 
 (defn eval-and-log-string! [s]
-  (let [ret {:time    (.getTime (Date.))
+  (let [ret {:id      (UUID/randomUUID)
+             :time    (.getTime (Date.))
              :snippet s
              :result  (pr-str (eval (read-string s)))}]
     (do (swap! eval-log conj ret)

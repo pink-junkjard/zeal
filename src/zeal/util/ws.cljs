@@ -1,4 +1,4 @@
-(ns zerpl.util.ws
+(ns zeal.util.ws
   (:require [cljs.core.async :as a :refer [go <!]])
   (:refer-clojure :exclude [send]))
 

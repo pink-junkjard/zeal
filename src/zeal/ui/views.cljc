@@ -1,9 +1,9 @@
-(ns zerpl.ui.views
+(ns zeal.ui.views
   (:require [uix.dom.alpha :as uix.dom]
             [uix.core.alpha :as uix]
-            [zerpl.ui.macros :as m]
-            #?(:cljs [zerpl.ui.talk :as t])
-            [zerpl.ui.state :as st :refer [<sub db-assoc db-assoc-in]]
+            [zeal.ui.macros :as m]
+            #?(:cljs [zeal.ui.talk :as t])
+            [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
             )

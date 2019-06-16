@@ -4,20 +4,20 @@
  ;; set an nrepl port for connection to a REPL.
  :nrepl    {:port 8777}
  :dev-http {3500 {:root    "resources/public"
-                  :handler zerpl.serve/dev-handler}}
+                  :handler zeal.serve/dev-handler}}
 
  :builds   {:app
             {:target     :browser
              :output-dir "resources/public/js/compiled"
              :asset-path "/js/compiled"
 
-             :modules    {:main {:entries [zerpl.ui.core]}}
+             :modules    {:main {:entries [zeal.ui.core]}}
 
              :devtools
              ;; before live-reloading any code call this function
-                         {:before-load zerpl.ui.core/stop
+                         {:before-load zeal.ui.core/stop
                           ;; after live-reloading finishes call this function
-                          :after-load  zerpl.ui.core/start
+                          :after-load  zeal.ui.core/start
                           ;; serve the public directory over http at port 8700
                           ;:http-root   "public"
                           ;:http-port   8700
