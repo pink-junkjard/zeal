@@ -12,7 +12,10 @@
             (shadow.api/stop-worker :app)))
 
 
-;(mount/start)
-;; weirdly this still starts the server
-;(mount/start-without server)
+(comment
 
+(mount/start)
+
+(shadow.api/repl :app)
+ :cljs/quit
+ )

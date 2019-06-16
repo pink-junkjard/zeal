@@ -1,8 +1,10 @@
 (ns zerpl.util.ws
-  (:require [cljs.core.async :as a :refer [go <!]]))
+  (:require [cljs.core.async :as a :refer [go <!]])
+  (:refer-clojure :exclude [send]))
 
-(defn open [ws-url ws-in ws-out]
-  (let [ws (js/WebSocket. ws-url)]
+(defn open [ws-url ws-out on-message]
+  (let [ws    (js/WebSocket. ws-url)
+        ws-in (a/chan)]
     (doto ws
       (.addEventListener "open"
                          (fn [e]
@@ -20,6 +22,7 @@
                            (go (loop []
                                  (when-some [msg (<! ws-in)]
                                    (js/console.log "WS-IN" msg)
+                                   (when on-message (on-message msg))
                                    ;(process-ws reconciler msg)
                                    (recur)))
 

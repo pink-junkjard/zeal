@@ -4,7 +4,7 @@
    [mount.core :as mount :refer [defstate]]
    [zerpl.data :refer [data]])
   (:import                              ;(crux.api ICruxAPI)
-   (java.util Date)))
+   (java.util Date UUID)))
 
 ;;;; Crux
 ;
@@ -40,36 +40,50 @@
 
 ;;; eval
 
-(defn eval-string [s]
-  (eval (read-string s)))
-
-(def eval-log (atom [{:time 1560496898883, :snippet "foo", :result "foo"}
-                     {:time 1560496898885, :snippet "(+ 1 1)", :result "2"}]))
+(def eval-log (atom []))
 
 (defn search
   "Takes a query, a collection of maps and keys to strings in each map to search.
   Returns a coll with maps that matched ordered by date."
   [q coll ks]
-  (->> coll
-       (filter (fn [m] (some (fn [k] (clojure.string/includes? (k m) q)) ks)))
-       (sort-by :time >)))
+  (if (empty? q)
+    nil
+    (->> coll
+         (filter
+          (fn [m]
+            (some
+             (fn [k]
+               (let [text (k m)
+                     s    (cond-> text (not (string? text)) (pr-str text))]
+                 (clojure.string/includes? s q))) ks)))
+         (sort-by :time >)
+         vec)))
 
 (defn search-eval-log [q]
   (search q @eval-log [:snippet :result]))
 
-(defn eval-and-log! [s]
+(defn eval-and-log-string! [s]
   (let [ret {:time    (.getTime (Date.))
              :snippet s
-             :result  (eval-string s)}]
+             :result  (pr-str (eval (read-string s)))}]
     (do (swap! eval-log conj ret)
         ret)))
+
+(defn eval-and-log! [s]
+  (let [ret {:id      (UUID/randomUUID)
+             :time    (.getTime (Date.))
+             :snippet s
+             :result  (eval s)}]
+    (do (swap! eval-log conj ret)
+        ret)))
+
 
 (comment
  (do
    (swap! eval-log empty)
    (doseq [test-k [:foo :bar :baz :bandoles :chicken]]
      (eval-and-log!
-      (pr-str `(zipmap (range 2) (repeat ~test-k))))))
+      `(zipmap (range 2) (repeat ~test-k)))))
  )
 
 ;(search "zipmap" @eval-log [:snippet :result])

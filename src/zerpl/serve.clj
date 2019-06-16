@@ -2,6 +2,7 @@
   (:require [aleph.http :as http]
             [mount.core :as mount :refer [defstate]]
             [manifold.stream :as s]
+            [aleph.http.client-middleware :refer [parse-transit transit-encode]]
             [uix.dom.alpha :as uix.dom]
             [zerpl.ui.views :as views]
             [clojure.core.async :as a]
@@ -18,7 +19,7 @@
   [:<>
    [:meta {:charset "UTF-8"}]
    [views/document
-    {:styles [#_(rnd-stylesheet) "body { font-family: menlo }"]
+    {:styles []
      :links  ["css/tachyons.css"]
      :js     [{:src "js/compiled/main.js"}
               {:script "zerpl.ui.core.init()"}]}]])
@@ -39,7 +40,7 @@
    :headers {"content-type" "application/text"}
    :body    "Expected a websocket request."})
 
-(defn search-eval-log-handler
+(defn ws-search-eval-log-handler
   [req]
   (-> (http/websocket-connection req)
       (d/chain
@@ -47,7 +48,8 @@
          (s/consume
           (fn [msg]
             (let [search-res (zc/search-eval-log msg)]
-              (s/put! socket (pr-str search-res))))
+              (s/put! socket
+                      (transit-encode search-res :json))))
           socket)
          socket))
       (d/catch
@@ -55,10 +57,19 @@
          non-websocket-request))))
 ;(mount/start)
 
+(defn search-eval-log-handler [req]
+  {:status  200
+   :headers {"content-type" "application/transit+json"}
+   :body    (transit-encode
+             (zc/search-eval-log (:q (parse-transit (-> req :body) :json)))
+             :json)})
+
 (defn eval-log-handler [req]
   {:status  200
-   :headers {"content-type" "text/plain"}
-   :body    (pr-str (zc/eval-and-log! (bs/to-string (:body req))))})
+   :headers {"content-type" "application/transit+json"}
+   :body    (transit-encode
+             (zc/eval-and-log-string! (:snippet (parse-transit (:body req) :json)))
+             :json)})
 
 (defn echo-handler
   [req]
