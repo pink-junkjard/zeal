@@ -2,13 +2,21 @@
   (:require [uix.dom.alpha :as uix.dom]
             [uix.core.alpha :as uix]
             [zeal.ui.macros :as m]
-            #?(:cljs [zeal.ui.talk :as t])
             [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in db-get db-get-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
+            #?@(:cljs [[zeal.ui.talk :as t]
+                       [den1k.shortcuts :as sc :refer [global-shortcuts]]])
             #?@(:cljs [["codemirror" :as cm]
                        ["codemirror/mode/clojure/clojure"]])))
 
+(global-shortcuts
+ {"cmd+/" #(when-let [search-node (db-get :search-node)]
+             (.focus search-node)
+             false)
+  ;"cmd+shift+z" #(js/console.log "redo")
+  ;"cmd+z"       #(js/console.log "undo")
+  })
 
 (defn init-codemirror
   [{:as opts :keys [node cm-ref from-textarea? on-change on-changes keyboard-shortcuts]}]
@@ -38,7 +46,7 @@
         cm   (uix/ref)]
     (when st-value-fn
       (st/on-change st-value-fn #(.setValue (.-doc @cm) (str %))))
-    [:div.bg-orange.w-50.h4
+    [:div.w-50.h4
      (merge
       {:ref #(when-not @node
                (reset! node %)
@@ -60,7 +68,8 @@
      [:div
       [:div.flex
        [:input
-        {:value     search-query
+        {:ref       #(db-assoc :search-node %)
+         :value     search-query
          :on-change (fn [e]
                       (let [q (.. e -target -value)]
                         (db-assoc :search-query q)
@@ -94,7 +103,7 @@
       [:div.flex
        [codemirror
         {:default-value (str snippet)
-         :st-value-fn   (comp :result :snippet)
+         :st-value-fn   (comp :snippet :editor)
          :cm-opts       {:keyboard-shortcuts
                          {"Cmd-Enter"
                           (fn [_cm]
@@ -122,6 +131,7 @@
    (for [l links]
      [:link {:rel "stylesheet" :href l}])
    [:body.sans-serif
+
     [:div#root [app]]
     (for [{:keys [src script]} js]
       [:script (when src {:src src}) script])]])
