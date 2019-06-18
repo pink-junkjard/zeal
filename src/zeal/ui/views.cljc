@@ -10,16 +10,20 @@
             #?@(:cljs [["codemirror" :as cm]
                        ["codemirror/mode/clojure/clojure"]])))
 
-(global-shortcuts
- {"cmd+/" #(when-let [search-node (db-get :search-node)]
-             (.focus search-node)
-             false)
-  ;"cmd+shift+z" #(js/console.log "redo")
-  ;"cmd+z"       #(js/console.log "undo")
-  })
+#?(:cljs
+   (global-shortcuts
+    {"cmd+/" #(when-let [search-node (db-get :search-node)]
+                (.focus search-node)
+                false)
+     ;"cmd+shift+z" #(js/console.log "redo")
+     ;"cmd+z"       #(js/console.log "undo")
+     }))
+
+(defn cm-set-value [cm s]
+  (.setValue (.-doc cm) (str s)))
 
 (defn init-codemirror
-  [{:as opts :keys [node cm-ref from-textarea? on-change on-changes keyboard-shortcuts]}]
+  [{:as opts :keys [node on-cm from-textarea? on-change on-changes keyboard-shortcuts]}]
   #?(:cljs
      (let [cm-fn (if from-textarea?
                    (.-fromTextArea cm)
@@ -29,7 +33,7 @@
                         (clj->js
                          (merge {:mode "clojure"}
                                 (dissoc opts
-                                        :node-ref :cm-ref :from-textarea?
+                                        :node-ref :on-cm :from-textarea?
                                         :on-change :on-changes :keyboard-shortcuts))))]
        (when on-change
          (.on cm "change" on-change))
@@ -37,27 +41,28 @@
          (.on cm "changes" on-changes))
        (when keyboard-shortcuts
          (.setOption cm "extraKeys" (clj->js keyboard-shortcuts)))
-       (reset! cm-ref cm)))
-  )
+       (on-cm cm))))
 
 
-(defn codemirror [{:as props :keys [default-value cm-opts st-value-fn]}]
+(defn codemirror [{:as props :keys [default-value cm-opts st-value-fn on-cm]}]
   (let [node (uix/ref)
         cm   (uix/ref)]
     (when st-value-fn
-      (st/on-change st-value-fn #(.setValue (.-doc @cm) (str %))))
+      (st/on-change st-value-fn #(cm-set-value @cm %)))
     [:div.w-50.h4
      (merge
       {:ref #(when-not @node
                (reset! node %)
                (init-codemirror
                 (merge {:node         %
-                        :cm-ref       cm
+                        :on-cm        (fn [cm-instance]
+                                        (reset! cm cm-instance)
+                                        (when on-cm (on-cm cm-instance)))
                         :value        default-value
                         :lineWrapping true
                         :lineNumbers  false}
                        cm-opts)))}
-      (dissoc props :cm-opts :st-value-fn))]))
+      (dissoc props :cm-opts :st-value-fn :on-cm))]))
 
 (defn app []
   (let [search-query   (<sub :search-query)
@@ -87,8 +92,11 @@
            [:div.flex.pv2.align-center.overflow-hidden.hover-bg-black-60.hover-white.pointer.ph1
             {:key      id
              :style    {:max-height "3rem"}
-             :on-click #(st/db-update :editor
-                                      assoc :snippet snippet :result result)}
+             :on-click #(do (st/db-update :editor assoc :snippet snippet :result result)
+                            ;; setting directly instead of syncing editor with st-value-fn
+                            ;; because when the editor value is reset on every change
+                            ;; the caret moves to index 0
+                            (cm-set-value (db-get-in [:editor :snippet-cm]) snippet))}
             [:div.w3.flex.items-center.f7.overflow-hidden
              (subs (str id) 0 8)]
             ;[:pre.bg-gray.white.ma0 snippet]
@@ -103,7 +111,7 @@
       [:div.flex
        [codemirror
         {:default-value (str snippet)
-         :st-value-fn   (comp :snippet :editor)
+         :on-cm         #(db-assoc-in [:editor :snippet-cm] %)
          :cm-opts       {:keyboard-shortcuts
                          {"Cmd-Enter"
                           (fn [_cm]

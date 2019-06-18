@@ -2,7 +2,8 @@
   (:require
    ;[crux.api :as crux]
    [mount.core :as mount :refer [defstate]]
-   [zeal.data :refer [data]])
+   [zeal.data :refer [data]]
+   [clojure.string :as str])
   (:import                              ;(crux.api ICruxAPI)
    (java.util Date UUID)))
 
@@ -48,16 +49,18 @@
   [q coll ks]
   (if (empty? q)
     nil
-    (->> coll
-         (filter
-          (fn [m]
-            (some
-             (fn [k]
-               (let [text (k m)
-                     s    (cond-> text (not (string? text)) (pr-str text))]
-                 (clojure.string/includes? s q))) ks)))
-         (sort-by :time >)
-         vec)))
+    (let [q (str/lower-case q)]
+     (->> coll
+          (filter
+           (fn [m]
+             (some
+              (fn [k]
+                (let [text (k m)]
+                  (cond-> text
+                    (not (string? text)) pr-str
+                    true (-> str/lower-case (str/includes? q))))) ks)))
+          (sort-by :time >)
+          vec))))
 
 (defn search-eval-log [q]
   (search q @eval-log [:snippet :result]))
@@ -66,7 +69,7 @@
   (let [ret {:id      (UUID/randomUUID)
              :time    (.getTime (Date.))
              :snippet s
-             :result  (pr-str (eval (read-string s)))}]
+             :result  (pr-str (eval (read-string (str "(do " s ")"))))}]
     (do (swap! eval-log conj ret)
         ret)))
 
