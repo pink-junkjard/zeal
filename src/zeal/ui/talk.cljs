@@ -29,11 +29,11 @@
                 {:transit-params {:q q}}))))))
 
 (comment
- (send-eval! '(* 14 7) println)
- (send-eval! '(zipmap (range 10) (range 10)) println)
- (send-eval! '[{:first-name "josh"
-                :last-name "kornreich"
-                :phone 1312123123}] println)
+ (send-eval! (pr-str '(* 14 7)) println)
+ (send-eval! (pr-str '(zipmap (range 10) (range 10))) println)
+ (send-eval! (pr-str [{:first-name "josh"
+                       :last-name  "kornreich"
+                       :phone      1312123123}]) println)
 
  )
 
@@ -49,7 +49,7 @@
                (st/db-assoc :search-results (read-transit results-transit)))))
 
 #_(defn send-search [q]
-  (ws/send ws-out q))
+    (ws/send ws-out q))
 
 ;(send-search "foo")
 

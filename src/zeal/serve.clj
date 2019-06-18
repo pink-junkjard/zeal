@@ -20,7 +20,7 @@
    [:meta {:charset "UTF-8"}]
    [views/document
     {:styles []
-     :links  ["css/tachyons.css"]
+     :links  ["css/tachyons.css" "css/codemirror.css"]
      :js     [{:src "js/compiled/main.js"}
               {:script "zeal.ui.core.init()"}]}]])
 

@@ -3,66 +3,114 @@
             [uix.core.alpha :as uix]
             [zeal.ui.macros :as m]
             #?(:cljs [zeal.ui.talk :as t])
-            [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in]]
+            [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in db-get db-get-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
-            )
+            #?@(:cljs [["codemirror" :as cm]
+                       ["codemirror/mode/clojure/clojure"]])))
+
+
+(defn init-codemirror
+  [{:as opts :keys [node cm-ref from-textarea? on-change on-changes keyboard-shortcuts]}]
+  #?(:cljs
+     (let [cm-fn (if from-textarea?
+                   (.-fromTextArea cm)
+                   (fn [node opts]
+                     (cm. node opts)))
+           cm    (cm-fn node
+                        (clj->js
+                         (merge {:mode "clojure"}
+                                (dissoc opts
+                                        :node-ref :cm-ref :from-textarea?
+                                        :on-change :on-changes :keyboard-shortcuts))))]
+       (when on-change
+         (.on cm "change" on-change))
+       (when on-changes
+         (.on cm "changes" on-changes))
+       (when keyboard-shortcuts
+         (.setOption cm "extraKeys" (clj->js keyboard-shortcuts)))
+       (reset! cm-ref cm)))
   )
 
-#?(:cljs
-   (set! cljs.pprint/*print-right-margin* 40))
 
+(defn codemirror [{:as props :keys [default-value cm-opts st-value-fn]}]
+  (let [node (uix/ref)
+        cm   (uix/ref)]
+    (when st-value-fn
+      (st/on-change st-value-fn #(.setValue (.-doc @cm) (str %))))
+    [:div.bg-orange.w-50.h4
+     (merge
+      {:ref #(when-not @node
+               (reset! node %)
+               (init-codemirror
+                (merge {:node         %
+                        :cm-ref       cm
+                        :value        default-value
+                        :lineWrapping true
+                        :lineNumbers  false}
+                       cm-opts)))}
+      (dissoc props :cm-opts :st-value-fn))]))
 
 (defn app []
   (let [search-query   (<sub :search-query)
         search-results (<sub :search-results)
-        show-editor?   (<sub :show-editor?)
         snippet        (<sub (comp :snippet :editor))
         result         (<sub (comp :result :editor))]
     [:main.app
      [:div
       [:div.flex
-       [:input {:value     search-query
-                :on-change (fn [e]
-                             (let [q (.. e -target -value)]
-                               (db-assoc :search-query q)
-                               #?(:cljs (t/send-search q #(db-assoc :search-results %)))))}]
+       [:input
+        {:value     search-query
+         :on-change (fn [e]
+                      (let [q (.. e -target -value)]
+                        (db-assoc :search-query q)
+                        #?(:cljs (t/send-search q #(db-assoc :search-results %)))))}]
        [:button
         {:on-click #(db-assoc :search-query ""
                               :search-results nil
                               :show-editor? true)}
         "new"]]
-      (when search-results
-        (for [{:keys [id date snippet result]} search-results]
-          ^{:key date}
-          [:div.flex.mb3.hover-bg-light-gray
-           [:div
-            (subs (str id) 0 8)]
-           [:pre.bg-gray.white.ma0 snippet]
-           [:pre.ma0 result]]))
-      (when show-editor?
-        [:div
-         [:button {:on-click #(do
-                                (println :EVAL snippet)
-                                #?(:cljs
-                                   (t/send-eval!
-                                    snippet
-                                    (fn [{r :result :as m}]
-                                      (println :RETURN m (type r))
-                                      (db-assoc-in [:editor :result] r)))))}
-          "eval"]
-         [:div.flex
-          [:div "editor"
-           [:pre
-            {:on-input                       #(db-assoc-in [:editor :snippet]
-                                                           (.. % -target -innerText))
-             :content-editable               true
-             :suppressContentEditableWarning true}
-            snippet]]
-          [:div "result"
-           [:pre
-            result
-            ]]]])]]))
+      (cond
+        (and (not-empty search-results) (not-empty search-query))
+        [:div.bg-light-gray.ph2.overflow-auto
+         {:style {:max-height :40%}}
+         (for [{:keys [id time snippet result]} search-results]
+           [:div.flex.pv2.align-center.overflow-hidden.hover-bg-black-60.hover-white.pointer.ph1
+            {:key      id
+             :style    {:max-height "3rem"}
+             :on-click #(st/db-update :editor
+                                      assoc :snippet snippet :result result)}
+            [:div.w3.flex.items-center.f7.overflow-hidden
+             (subs (str id) 0 8)]
+            ;[:pre.bg-gray.white.ma0 snippet]
+            [:pre.w-50.ws-normal.f6.ma0.ml3
+             {:style {:white-space :pre-wrap}}
+             snippet]
+            [:pre.w-50.ws-normal.f6.ma0.ml3
+             {:style {:white-space :pre-wrap}}
+             result]])]
+        (not-empty search-query)
+        "No results")
+      [:div.flex
+       [codemirror
+        {:default-value (str snippet)
+         :st-value-fn   (comp :result :snippet)
+         :cm-opts       {:keyboard-shortcuts
+                         {"Cmd-Enter"
+                          (fn [_cm]
+                            #?(:cljs
+                               (t/send-eval!
+                                (db-get-in [:editor :snippet])
+                                (fn [{r :result :as m}]
+                                  (db-assoc-in [:editor :result] r)))))}
+
+                         :on-changes
+                         (fn [cm _]
+                           (db-assoc-in [:editor :snippet] (.getValue cm)))}}]
+       [codemirror
+        {:default-value (str result)
+         :st-value-fn   (comp :result :editor)
+         :cm-opts       {:readOnly true}}]]]]))
 
 
 (defn document
