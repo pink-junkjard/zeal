@@ -8,7 +8,8 @@
             #?@(:cljs [[zeal.ui.talk :as t]
                        [den1k.shortcuts :as sc :refer [global-shortcuts]]])
             #?@(:cljs [["codemirror" :as cm]
-                       ["codemirror/mode/clojure/clojure"]])))
+                       ["codemirror/mode/clojure/clojure"]
+                       ["codemirror/addon/edit/closebrackets"]])))
 
 #?(:cljs
    (global-shortcuts
@@ -31,7 +32,8 @@
                      (cm. node opts)))
            cm    (cm-fn node
                         (clj->js
-                         (merge {:mode "clojure"}
+                         (merge {:mode "clojure"
+                                 :autoCloseBrackets true}
                                 (dissoc opts
                                         :node-ref :on-cm :from-textarea?
                                         :on-change :on-changes :keyboard-shortcuts))))]
