@@ -23,9 +23,12 @@
 (defstate _init-db
   :start (do (put! data)))
 
+(defn- add-id-if-none-exists [{:as e id :crux.db/id}]
+  (cond-> e (nil? id) (assoc :crux.db/id (UUID/randomUUID))))
+
 (def put-tx
-  (map (fn [{:as m id :crux.db/id}]
-         (let [m (if id m (assoc m :crux.db/id (UUID/randomUUID)))]
+  (map (fn [m]
+         (let [m (add-id-if-none-exists m)]
            [:crux.tx/put m]))))
 
 (defn put! [data]
@@ -39,16 +42,24 @@
 (defn entity [eid]
   (crux/entity (crux/db crux) eid))
 
+(defn history [eid]
+  (crux/history crux eid))
+
+(defn entity-history [eid]
+ (let [h (history eid)]
+   (for [{:keys [crux.tx/tx-time crux.db/id]} h]
+     (crux/entity (crux/db crux tx-time tx-time) id))))
+
 (defn some-strings-include? [q & strings]
   (let [q (str/lower-case q)]
     (boolean (some #(str/includes? (str/lower-case %) q) strings))))
 
 (defn crux-search [q-str]
   (->> (q {:find  '[?e]
-       :where '[[?e :snippet ?s]
-                [?e :result ?r]
-                [(zeal.core/some-strings-include? ?search-string ?s ?r) ?match]]
-       :args  [{:?search-string q-str}]})
+           :where '[[?e :snippet ?s]
+                    [?e :result ?r]
+                    [(zeal.core/some-strings-include? ?search-string ?s ?r) ?match]]
+           :args  [{:?search-string q-str}]})
        (map (comp entity first))
        (sort-by :time >)
        vec))
@@ -81,6 +92,16 @@
     nil
     (crux-search q))
   #_(search q @eval-log [:snippet :result]))
+
+(defn do-eval-string [s]
+  (pr-str (eval (read-string (str "(do " s ")")))))
+
+(defn eval-and-log-exec-ent! [{:keys [snippet] :as exec-ent}]
+  (let [execd (-> exec-ent (assoc :time (.getTime (Date.))
+                                  :result (do-eval-string snippet))
+                  add-id-if-none-exists)]
+    (put! [execd])
+    execd))
 
 (defn eval-and-log-string! [s]
   (let [ret {:id      (UUID/randomUUID)

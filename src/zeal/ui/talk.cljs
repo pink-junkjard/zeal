@@ -1,6 +1,5 @@
 (ns zeal.ui.talk
   (:require
-   [zeal.util.ws :as ws]
    [cognitect.transit :as t]
    [cljs.core.async :as a :refer [go <!]]
    [cljs-http.client :as http]))
@@ -12,12 +11,12 @@
     (fn [transit]
       (t/read reader transit))))
 
-(defn send-eval! [snippet cb]
+(defn send-eval! [exec-ent cb]
   (go
    (cb
     (:body (<! (http/post
                 eval-url
-                {:transit-params {:snippet snippet}}))))))
+                {:transit-params (dissoc exec-ent :result)}))))))
 
 (def search-url "http://localhost:3400/search-eval-log")
 
@@ -36,9 +35,6 @@
                        :phone      1312123123}]) println)
 
  )
-
-(def ws-url "ws://localhost:3400/search-eval-log")
-(def ws-out (a/chan 1))
 
 #_(defonce socket
     (ws/open ws-url

@@ -68,7 +68,7 @@
   {:status  200
    :headers {"content-type" "application/transit+json"}
    :body    (transit-encode
-             (zc/eval-and-log-string! (:snippet (parse-transit (:body req) :json)))
+             (zc/eval-and-log-exec-ent! (parse-transit (:body req) :json))
              :json)})
 
 (defn echo-handler

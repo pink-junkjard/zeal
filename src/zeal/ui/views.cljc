@@ -32,7 +32,7 @@
                      (cm. node opts)))
            cm    (cm-fn node
                         (clj->js
-                         (merge {:mode "clojure"
+                         (merge {:mode              "clojure"
                                  :autoCloseBrackets true}
                                 (dissoc opts
                                         :node-ref :on-cm :from-textarea?
@@ -69,8 +69,8 @@
 (defn app []
   (let [search-query   (<sub :search-query)
         search-results (<sub :search-results)
-        snippet        (<sub (comp :snippet :editor))
-        result         (<sub (comp :result :editor))]
+        snippet        (<sub (comp :snippet :exec-ent))
+        result         (<sub (comp :result :exec-ent))]
     [:main.app
      [:div
       [:div.flex
@@ -82,19 +82,22 @@
                         (db-assoc :search-query q)
                         #?(:cljs (t/send-search q #(db-assoc :search-results %)))))}]
        [:button
-        {:on-click #(db-assoc :search-query ""
-                              :search-results nil
-                              :show-editor? true)}
+        {:on-click #(let [snippet ";; New Snippet"]
+                      (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+
+                      (db-assoc :search-query ""
+                                :search-results nil
+                                :exec-ent {:snippet snippet}))}
         "new"]]
       (cond
         (and (not-empty search-results) (not-empty search-query))
         [:div.bg-light-gray.ph2.overflow-auto
          {:style {:max-height :40%}}
-         (for [{:keys [crux.db/id time snippet result]} search-results]
+         (for [{:as exec-ent :keys [crux.db/id time snippet result]} search-results]
            [:div.flex.pv2.align-center.overflow-hidden.hover-bg-black-60.hover-white.pointer.ph1
             {:key      id
              :style    {:max-height "3rem"}
-             :on-click #(do (st/db-update :editor assoc :snippet snippet :result result)
+             :on-click #(do (st/db-assoc :exec-ent exec-ent)
                             ;; setting directly instead of syncing editor with st-value-fn
                             ;; because when the editor value is reset on every change
                             ;; the caret moves to index 0
@@ -107,7 +110,11 @@
              snippet]
             [:pre.w-50.ws-normal.f6.ma0.ml3
              {:style {:white-space :pre-wrap}}
-             result]])]
+             result]
+            [:div.pointer
+             {:on-click (fn [e]
+                          #(:cljs ))}
+             "h"]])]
         (not-empty search-query)
         "No results")
       [:div.flex
@@ -119,16 +126,15 @@
                           (fn [_cm]
                             #?(:cljs
                                (t/send-eval!
-                                (db-get-in [:editor :snippet])
-                                (fn [{r :result :as m}]
-                                  (db-assoc-in [:editor :result] r)))))}
+                                (db-get :exec-ent)
+                                (fn [m] (db-assoc :exec-ent m)))))}
 
                          :on-changes
                          (fn [cm _]
-                           (db-assoc-in [:editor :snippet] (.getValue cm)))}}]
+                           (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]
        [codemirror
         {:default-value (str result)
-         :st-value-fn   (comp :result :editor)
+         :st-value-fn   (comp :result :exec-ent)
          :cm-opts       {:readOnly true}}]]]]))
 
 
