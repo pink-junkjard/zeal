@@ -90,7 +90,7 @@
         (and (not-empty search-results) (not-empty search-query))
         [:div.bg-light-gray.ph2.overflow-auto
          {:style {:max-height :40%}}
-         (for [{:keys [id time snippet result]} search-results]
+         (for [{:keys [crux.db/id time snippet result]} search-results]
            [:div.flex.pv2.align-center.overflow-hidden.hover-bg-black-60.hover-white.pointer.ph1
             {:key      id
              :style    {:max-height "3rem"}

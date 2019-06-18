@@ -1,43 +1,57 @@
 (ns zeal.core
   (:require
-   ;[crux.api :as crux]
+   [crux.api :as crux]
    [mount.core :as mount :refer [defstate]]
    [zeal.data :refer [data]]
    [clojure.string :as str])
   (:import                              ;(crux.api ICruxAPI)
-   (java.util Date UUID)))
+   (java.util Date UUID)
+   (crux.api ICruxAPI)))
 
 ;;;; Crux
-;
-;(def crux-options
-;  {:kv-backend "crux.kv.memdb.MemKv"
-;   :db-dir     "data/db-dir-1"})
-;
-;(defstate ^ICruxAPI crux
-;  :start (crux/start-standalone-system crux-options)
-;  :stop (.close crux))
-;
-;(declare put! put-generations!)
-;(defstate _init-db
-;  :start (do (put! data)))
-;
-;(def put-tx
-;  (map (fn [m]
-;         (let [id (or (:crux.db/id m) (java.util.UUID/randomUUID))]
-;           [:crux.tx/put id             ; id for Kafka
-;            (assoc m :crux.db/id id)
-;            (java.util.Date.)]))))
-;
-;(defn put! [data]
-;  (crux/submit-tx
-;   crux
-;   (into [] put-tx data)))
-;
-;(defn q [& args]
-;  (apply crux/q (crux/db crux) args))
-;
-;(defn entity [eid]
-;  (crux/entity (crux/db crux) eid))
+
+(def crux-options
+  {:kv-backend    "crux.kv.rocksdb.RocksKv"
+   :event-log-dir "data/eventlog-1"
+   :db-dir        "data/db-dir-1"})
+
+(defstate ^ICruxAPI crux
+  :start (crux/start-standalone-system crux-options)
+  :stop (.close crux))
+
+(declare put! put-generations!)
+(defstate _init-db
+  :start (do (put! data)))
+
+(def put-tx
+  (map (fn [{:as m id :crux.db/id}]
+         (let [m (if id m (assoc m :crux.db/id (UUID/randomUUID)))]
+           [:crux.tx/put m]))))
+
+(defn put! [data]
+  (crux/submit-tx
+   crux
+   (into [] put-tx data)))
+
+(defn q [& args]
+  (apply crux/q (crux/db crux) args))
+
+(defn entity [eid]
+  (crux/entity (crux/db crux) eid))
+
+(defn some-strings-include? [q & strings]
+  (let [q (str/lower-case q)]
+    (boolean (some #(str/includes? (str/lower-case %) q) strings))))
+
+(defn crux-search [q-str]
+  (->> (q {:find  '[?e]
+       :where '[[?e :snippet ?s]
+                [?e :result ?r]
+                [(zeal.core/some-strings-include? ?search-string ?s ?r) ?match]]
+       :args  [{:?search-string q-str}]})
+       (map (comp entity first))
+       (sort-by :time >)
+       vec))
 
 ;;; eval
 
@@ -50,28 +64,33 @@
   (if (empty? q)
     nil
     (let [q (str/lower-case q)]
-     (->> coll
-          (filter
-           (fn [m]
-             (some
-              (fn [k]
-                (let [text (k m)]
-                  (cond-> text
-                    (not (string? text)) pr-str
-                    true (-> str/lower-case (str/includes? q))))) ks)))
-          (sort-by :time >)
-          vec))))
+      (->> coll
+           (filter
+            (fn [m]
+              (some
+               (fn [k]
+                 (let [text (k m)]
+                   (cond-> text
+                     (not (string? text)) pr-str
+                     true (-> str/lower-case (str/includes? q))))) ks)))
+           (sort-by :time >)
+           vec))))
 
 (defn search-eval-log [q]
-  (search q @eval-log [:snippet :result]))
+  (if (empty? q)
+    nil
+    (crux-search q))
+  #_(search q @eval-log [:snippet :result]))
 
 (defn eval-and-log-string! [s]
   (let [ret {:id      (UUID/randomUUID)
              :time    (.getTime (Date.))
              :snippet s
              :result  (pr-str (eval (read-string (str "(do " s ")"))))}]
-    (do (swap! eval-log conj ret)
-        ret)))
+    (do
+      (put! [(dissoc ret :id)])
+      (swap! eval-log conj ret)
+      ret)))
 
 (defn eval-and-log! [s]
   (let [ret {:id      (UUID/randomUUID)
