@@ -31,10 +31,14 @@
          (let [m (add-id-if-none-exists m)]
            [:crux.tx/put m]))))
 
-(defn put! [data]
-  (crux/submit-tx
-   crux
-   (into [] put-tx data)))
+(defn put!
+  ([data] (put! data false))
+  ([data blocking?]
+   (let [ret (crux/submit-tx
+              crux
+              (into [] put-tx data))]
+     (when blocking? (crux/sync crux (:crux.tx/tx-time ret) nil))
+     ret)))
 
 (defn q [& args]
   (apply crux/q (crux/db crux) args))
@@ -46,9 +50,9 @@
   (crux/history crux eid))
 
 (defn entity-history [eid]
- (let [h (history eid)]
-   (for [{:keys [crux.tx/tx-time crux.db/id]} h]
-     (crux/entity (crux/db crux tx-time tx-time) id))))
+  (let [h (history eid)]
+    (for [{:keys [crux.tx/tx-time crux.db/id]} h]
+      (crux/entity (crux/db crux tx-time tx-time) id))))
 
 (defn some-strings-include? [q & strings]
   (let [q (str/lower-case q)]
@@ -100,7 +104,7 @@
   (let [execd (-> exec-ent (assoc :time (.getTime (Date.))
                                   :result (do-eval-string snippet))
                   add-id-if-none-exists)]
-    (put! [execd])
+    (put! [execd] true)
     execd))
 
 (defn eval-and-log-string! [s]

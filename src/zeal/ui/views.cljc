@@ -5,8 +5,8 @@
             [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in db-get db-get-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
-            #?@(:cljs [[zeal.ui.talk :as t]
-                       [den1k.shortcuts :as sc :refer [global-shortcuts]]])
+            [zeal.ui.talk :as t]
+            #?@(:cljs [[den1k.shortcuts :as sc :refer [global-shortcuts]]])
             #?@(:cljs [["codemirror" :as cm]
                        ["codemirror/mode/clojure/clojure"]
                        ["codemirror/addon/edit/closebrackets"]])))
@@ -69,18 +69,20 @@
 (defn app []
   (let [search-query   (<sub :search-query)
         search-results (<sub :search-results)
+        show-history?  (<sub :show-history?)
+        history        (<sub :history)
         snippet        (<sub (comp :snippet :exec-ent))
         result         (<sub (comp :result :exec-ent))]
     [:main.app
      [:div
       [:div.flex
-       [:input
+       [:input.outline-0
         {:ref       #(db-assoc :search-node %)
          :value     search-query
          :on-change (fn [e]
                       (let [q (.. e -target -value)]
                         (db-assoc :search-query q)
-                        #?(:cljs (t/send-search q #(db-assoc :search-results %)))))}]
+                        (t/send-search q #(db-assoc :search-results %))))}]
        [:button
         {:on-click #(let [snippet ";; New Snippet"]
                       (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
@@ -90,12 +92,16 @@
                                 :exec-ent {:snippet snippet}))}
         "new"]]
       (cond
-        (and (not-empty search-results) (not-empty search-query))
+        (or show-history? (and (not-empty search-results) (not-empty search-query)))
         [:div.bg-light-gray.ph2.overflow-auto
          {:style {:max-height :40%}}
-         (for [{:as exec-ent :keys [crux.db/id time snippet result]} search-results]
+         (for [{:as   exec-ent
+                :keys [crux.db/id time snippet result]}
+               (if show-history?
+                 history
+                 search-results)]
            [:div.flex.pv2.align-center.overflow-hidden.hover-bg-black-60.hover-white.pointer.ph1
-            {:key      id
+            {:key      (str id "-" time)
              :style    {:max-height "3rem"}
              :on-click #(do (st/db-assoc :exec-ent exec-ent)
                             ;; setting directly instead of syncing editor with st-value-fn
@@ -111,10 +117,17 @@
             [:pre.w-50.ws-normal.f6.ma0.ml3
              {:style {:white-space :pre-wrap}}
              result]
-            [:div.pointer
-             {:on-click (fn [e]
-                          #(:cljs ))}
-             "h"]])]
+            [:div.pointer.w-10
+             {:on-click (fn [_]
+                          (if show-history?
+                            (t/send-search search-query
+                                           #(db-assoc :search-results %
+                                                      :show-history? false))
+                            (t/history exec-ent
+                                       #(db-assoc :history %
+                                                  :show-history? true))))}
+             (if show-history? "hide-h" "show-h") ; todo clock icon
+             ]])]
         (not-empty search-query)
         "No results")
       [:div.flex
@@ -124,10 +137,15 @@
          :cm-opts       {:keyboard-shortcuts
                          {"Cmd-Enter"
                           (fn [_cm]
-                            #?(:cljs
-                               (t/send-eval!
-                                (db-get :exec-ent)
-                                (fn [m] (db-assoc :exec-ent m)))))}
+                            (t/send-eval!
+                             (db-get :exec-ent)
+                             (fn [m]
+                               (db-assoc :exec-ent m)
+                               (if (db-get :show-history?)
+                                 (t/history m #(db-assoc :history %))
+                                 (t/send-search (db-get :search-query)
+                                                #(db-assoc :search-results %)))
+                               )))}
 
                          :on-changes
                          (fn [cm _]

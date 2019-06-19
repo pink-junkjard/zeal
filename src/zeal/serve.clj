@@ -57,20 +57,6 @@
          non-websocket-request))))
 ;(mount/start)
 
-(defn search-eval-log-handler [req]
-  {:status  200
-   :headers {"content-type" "application/transit+json"}
-   :body    (transit-encode
-             (zc/search-eval-log (:q (parse-transit (-> req :body) :json)))
-             :json)})
-
-(defn eval-log-handler [req]
-  {:status  200
-   :headers {"content-type" "application/transit+json"}
-   :body    (transit-encode
-             (zc/eval-and-log-exec-ent! (parse-transit (:body req) :json))
-             :json)})
-
 (defn echo-handler
   [req]
   (-> (http/websocket-connection req)
@@ -86,12 +72,34 @@
    :headers {"content-type" "text/html"}
    :body    (uix.dom/render-to-string [html])})
 
+(defn- wrap-multi-handler
+  ([handler] (fn [req] (wrap-multi-handler handler req)))
+  ([handler req]
+   {:status  200
+    :headers {"content-type" "application/transit+json"}
+    :body    (transit-encode
+              (handler (parse-transit (:body req) :json))
+              :json)}))
+
+(defmulti multi-handler first)
+
+(defmethod multi-handler :eval-and-log
+  [[_ exec-ent]]
+  (zc/eval-and-log-exec-ent! exec-ent))
+
+(defmethod multi-handler :search
+  [[_ {:keys [q]}]]
+  (zc/search-eval-log q))
+
+(defmethod multi-handler :history
+  [[_ {id :crux.db/id}]]
+  (zc/entity-history id))
+
 (defn handler [{:as req :keys [uri]}]
   (case uri
     "/" (index)
     "/echo" (echo-handler req)
-    "/eval-log" (eval-log-handler req)
-    "/search-eval-log" (search-eval-log-handler req)
+    "/dispatch" (wrap-multi-handler multi-handler req)
 
     ;; todo add 404
     {:status  200
