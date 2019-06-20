@@ -9,7 +9,8 @@
             #?@(:cljs [[den1k.shortcuts :as sc :refer [global-shortcuts]]])
             #?@(:cljs [["codemirror" :as cm]
                        ["codemirror/mode/clojure/clojure"]
-                       ["codemirror/addon/edit/closebrackets"]])))
+                       ["codemirror/addon/edit/closebrackets"]
+                       ["parinfer-codemirror" :as pcm]])))
 
 #?(:cljs
    (global-shortcuts
@@ -20,6 +21,7 @@
      ;"cmd+z"       #(js/console.log "undo")
      }))
 
+(def new-snippet-text ";; New Snippet")
 (defn cm-set-value [cm s]
   (.setValue (.-doc cm) (str s)))
 
@@ -32,7 +34,7 @@
                      (cm. node opts)))
            cm    (cm-fn node
                         (clj->js
-                         (merge {:mode              "clojure"
+                         (merge {:mode "clojure"
                                  :autoCloseBrackets true}
                                 (dissoc opts
                                         :node-ref :on-cm :from-textarea?
@@ -46,7 +48,7 @@
        (on-cm cm))))
 
 
-(defn codemirror [{:as props :keys [default-value cm-opts st-value-fn on-cm]}]
+(defn codemirror [{:as props :keys [default-value cm-opts st-value-fn on-cm parinfer?]}]
   (let [node (uix/ref)
         cm   (uix/ref)]
     (when st-value-fn
@@ -59,12 +61,13 @@
                 (merge {:node         %
                         :on-cm        (fn [cm-instance]
                                         (reset! cm cm-instance)
+                                        (when parinfer? (pcm/init cm-instance))
                                         (when on-cm (on-cm cm-instance)))
                         :value        default-value
                         :lineWrapping true
                         :lineNumbers  false}
                        cm-opts)))}
-      (dissoc props :cm-opts :st-value-fn :on-cm))]))
+      (dissoc props :cm-opts :st-value-fn :on-cm :parinfer?))]))
 
 (defn app []
   (let [search-query   (<sub :search-query)
@@ -84,12 +87,12 @@
                         (db-assoc :search-query q)
                         (t/send-search q #(db-assoc :search-results %))))}]
        [:button
-        {:on-click #(let [snippet ";; New Snippet"]
-                      (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+        {:on-click #(do
+                      (cm-set-value (db-get-in [:editor :snippet-cm]) new-snippet-text)
 
                       (db-assoc :search-query ""
                                 :search-results nil
-                                :exec-ent {:snippet snippet}))}
+                                :exec-ent {:snippet new-snippet-text}))}
         "new"]]
       (cond
         (or show-history? (and (not-empty search-results) (not-empty search-query)))
@@ -132,8 +135,9 @@
         "No results")
       [:div.flex
        [codemirror
-        {:default-value (str snippet)
+        {:default-value (or snippet new-snippet-text)
          :on-cm         #(db-assoc-in [:editor :snippet-cm] %)
+         :parinfer?     true
          :cm-opts       {:keyboard-shortcuts
                          {"Cmd-Enter"
                           (fn [_cm]
