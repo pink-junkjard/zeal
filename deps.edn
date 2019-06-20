@@ -1,30 +1,33 @@
 {:paths
  ["resources" "src"]
  :deps
- {org.clojure/clojure        {:mvn/version "RELEASE"}
-  mount                      {:mvn/version "0.1.16"}
+ {org.clojure/clojure          {:mvn/version "RELEASE"}
+  org.clojure/tools.deps.alpha {:git/url "https://github.com/clojure/tools.deps.alpha.git"
+                                :sha     "e160f184f051f120014244679831a9bccb37c9de"}
 
-  medley                     {:mvn/version "1.1.0"} ; needed?
+  mount                        {:mvn/version "0.1.16"}
 
-  aleph                      {:mvn/version "0.4.6"}
-  cljs-http                  {:mvn/version "0.1.46"}
-  com.cognitect/transit-clj  {:mvn/version "0.8.313"}
-  com.cognitect/transit-cljs {:mvn/version "0.8.256"}
-  yada                       {:mvn/version "1.2.15"} ; needed?
-  bidi                       {:mvn/version "2.1.6"} ; needed?
+  medley                       {:mvn/version "1.1.0"} ; needed?
+
+  aleph                        {:mvn/version "0.4.6"}
+  cljs-http                    {:mvn/version "0.1.46"}
+  com.cognitect/transit-clj    {:mvn/version "0.8.313"}
+  com.cognitect/transit-cljs   {:mvn/version "0.8.256"}
+  yada                         {:mvn/version "1.2.15"} ; needed?
+  bidi                         {:mvn/version "2.1.6"} ; needed?
 
 
-  garden                     {:mvn/version "1.3.9"} ; needed?
-  uix.core                   {:local/root "../clojure/uix/core"}
-  uix.dom                    {:local/root "../clojure/uix/dom"}
-  den1k/shortcuts            {:git/url "https://github.com/den1k/shortcuts"
-                              :sha     "871cc945bc5d6f6af4b1a46e5918c36e3d4f1949"}
+  garden                       {:mvn/version "1.3.9"} ; needed?
+  uix.core                     {:local/root "../clojure/uix/core"}
+  uix.dom                      {:local/root "../clojure/uix/dom"}
+  den1k/shortcuts              {:git/url "https://github.com/den1k/shortcuts"
+                                :sha     "871cc945bc5d6f6af4b1a46e5918c36e3d4f1949"}
 
-  juxt/crux                  {:mvn/version "19.06-1.1.0-alpha"}
-  org.rocksdb/rocksdbjni     {:mvn/version "5.17.2"}
+  juxt/crux                    {:mvn/version "19.06-1.1.0-alpha"}
+  org.rocksdb/rocksdbjni       {:mvn/version "5.17.2"}
 
   ;; utils
-  camel-snake-kebab          {:mvn/version "0.4.0"}
+  camel-snake-kebab            {:mvn/version "0.4.0"}
   }
  :aliases
  {:dev

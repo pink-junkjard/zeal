@@ -17,10 +17,10 @@
 (defn send [dispatch-vec cb]
   #?(:cljs
      (go
-      (cb
-       (:body (<! (http/post
-                   dispatch-url
-                   {:transit-params dispatch-vec})))))))
+      (when-let [body (:body (<! (http/post
+                                  dispatch-url
+                                  {:transit-params dispatch-vec})))]
+        (cb body)))))
 
 (defn send-eval! [exec-ent cb]
   (send [:eval-and-log (dissoc exec-ent :result)] cb))

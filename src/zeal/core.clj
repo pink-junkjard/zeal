@@ -2,8 +2,9 @@
   (:require
    [crux.api :as crux]
    [mount.core :as mount :refer [defstate]]
+   [clojure.string :as str]
    [zeal.data :refer [data]]
-   [clojure.string :as str])
+   [zeal.eval.core :as eval])
   (:import                              ;(crux.api ICruxAPI)
    (java.util Date UUID)
    (crux.api ICruxAPI)))
@@ -97,15 +98,15 @@
     (crux-search q))
   #_(search q @eval-log [:snippet :result]))
 
-(defn do-eval-string [s]
-  (pr-str (eval (read-string (str "(do " s ")")))))
-
 (defn eval-and-log-exec-ent! [{:keys [snippet] :as exec-ent}]
-  (let [execd (-> exec-ent (assoc :time (.getTime (Date.))
-                                  :result (do-eval-string snippet))
-                  add-id-if-none-exists)]
-    (put! [execd] true)
-    execd))
+  (try
+    (let [execd (-> exec-ent (assoc :time (.getTime (Date.))
+                                    :result (eval/do-eval-string snippet))
+                    add-id-if-none-exists)]
+      (put! [execd] true)
+      execd)
+    (catch Exception e
+      (println e))))
 
 (defn eval-and-log-string! [s]
   (let [ret {:id      (UUID/randomUUID)
