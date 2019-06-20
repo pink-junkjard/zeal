@@ -4,6 +4,9 @@
             [manifold.stream :as s]
             [aleph.http.client-middleware :refer [parse-transit transit-encode]]
             [uix.dom.alpha :as uix.dom]
+            [ring.middleware.resource :refer [wrap-resource]]
+            [ring.middleware.content-type :refer [wrap-content-type]]
+            [ring.middleware.not-modified :refer [wrap-not-modified]]
             [zeal.ui.views :as views]
             [clojure.core.async :as a]
             [zeal.core :as zc]
@@ -20,11 +23,14 @@
    [:meta {:charset "UTF-8"}]
    [views/document
     {:styles []
-     :links  ["css/tachyons.css" "css/codemirror.css"]
+     :links  [
+              "css/tachyons.css"
+              "css/codemirror.css"
+              "css/font-awesome/css/all.css"]
      :js     [{:src "js/compiled/main.js"}
               {:script "zeal.ui.core.init()"}]}]])
 
-(defn index []
+(defn index [_]
   (let [res (s/stream)]
     (future
      (uix.dom/render-to-stream
@@ -95,16 +101,21 @@
   [[_ {id :crux.db/id}]]
   (zc/entity-history id))
 
-(defn handler [{:as req :keys [uri]}]
-  (case uri
-    "/" (index)
-    "/echo" (echo-handler req)
-    "/dispatch" (wrap-multi-handler multi-handler req)
+(def resource-handler
+  (-> (constantly {:status 200})
+      (wrap-resource "public")
+      (wrap-content-type)
+      (wrap-not-modified)))
 
-    ;; todo add 404
-    {:status  200
-     :headers {"content-type" "application/javascript"}
-     :body    (slurp (str "resources/public" (:uri req)))}))
+(defn handler [{:as req :keys [uri]}]
+  (let [handle
+        (case uri
+          "/" index
+          "/echo" echo-handler
+          "/dispatch" (wrap-multi-handler multi-handler)
+          ;; todo add 404
+          resource-handler)]
+    (handle req)))
 
 (defstate server
   :start (http/start-server handler {:port 3400})
@@ -114,3 +125,4 @@
  (mount/stop)
  (mount/start)
  )
+

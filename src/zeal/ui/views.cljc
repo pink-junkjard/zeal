@@ -35,7 +35,7 @@
                      (cm. node opts)))
            cm    (cm-fn node
                         (clj->js
-                         (merge {:mode "clojure"
+                         (merge {:mode              "clojure"
                                  :autoCloseBrackets true}
                                 (dissoc opts
                                         :node-ref :on-cm :from-textarea?
@@ -55,20 +55,21 @@
     (when st-value-fn
       (st/on-change st-value-fn #(cm-set-value @cm %)))
     [:div.w-50.h4
-     (merge
-      {:ref #(when-not @node
-               (reset! node %)
-               (init-codemirror
-                (merge {:node         %
-                        :on-cm        (fn [cm-instance]
-                                        (reset! cm cm-instance)
-                                        (when parinfer? (pcm/init cm-instance))
-                                        (when on-cm (on-cm cm-instance)))
-                        :value        default-value
-                        :lineWrapping true
-                        :lineNumbers  false}
-                       cm-opts)))}
-      (dissoc props :cm-opts :st-value-fn :on-cm :parinfer?))]))
+     #?(:cljs
+        (merge
+         {:ref #(when-not @node
+                  (reset! node %)
+                  (init-codemirror
+                   (merge {:node         %
+                           :on-cm        (fn [cm-instance]
+                                           (reset! cm cm-instance)
+                                           (when parinfer? (pcm/init cm-instance))
+                                           (when on-cm (on-cm cm-instance)))
+                           :value        default-value
+                           :lineWrapping true
+                           :lineNumbers  false}
+                          cm-opts)))}
+         (dissoc props :cm-opts :st-value-fn :on-cm :parinfer?)))]))
 
 (defn app []
   (let [search-query   (<sub :search-query)
@@ -78,7 +79,7 @@
         snippet        (<sub (comp :snippet :exec-ent))
         result         (<sub (comp :result :exec-ent))]
     [:main.app
-     [:div
+     [:div                              ;search
       [:div.flex
        [:input.outline-0
         {:ref       #(db-assoc :search-node %)
@@ -97,14 +98,14 @@
         "new"]]
       (cond
         (or show-history? (and (not-empty search-results) (not-empty search-query)))
-        [:div.bg-light-gray.ph2.overflow-auto
+        [:div.ph2.overflow-auto
          {:style {:max-height :40%}}
          (for [{:as   exec-ent
                 :keys [crux.db/id time snippet result]}
                (if show-history?
                  history
                  search-results)]
-           [:div.flex.pv2.align-center.overflow-hidden.hover-bg-black-60.hover-white.pointer.ph1
+           [:div.flex.pv2.align-center.overflow-hidden.hover-bg-light-gray.pointer.ph1.hide-child
             {:key      (str id "-" time)
              :style    {:max-height "3rem"}
              :on-click #(do (st/db-assoc :exec-ent exec-ent)
@@ -121,44 +122,46 @@
             [:pre.w-50.ws-normal.f6.ma0.ml3
              {:style {:white-space :pre-wrap}}
              result]
-            [:div.pointer.w-10
-             {:on-click (fn [_]
+            [:i.pointer.fas.fa-history.flex.self-center.pa1.br2.child
+             {:class    (if show-history?
+                          "bg-gray white hover-bg-white hover-black"
+                          "hover-bg-white")
+              :on-click (fn [_]
                           (if show-history?
                             (t/send-search search-query
                                            #(db-assoc :search-results %
                                                       :show-history? false))
                             (t/history exec-ent
                                        #(db-assoc :history %
-                                                  :show-history? true))))}
-             (if show-history? "hide-h" "show-h") ; todo clock icon
-             ]])]
+                                                  :show-history? true))))}]])]
         (not-empty search-query)
-        "No results")
-      [:div.flex
-       [codemirror
-        {:default-value (or snippet new-snippet-text)
-         :on-cm         #(db-assoc-in [:editor :snippet-cm] %)
-         :parinfer?     true
-         :cm-opts       {:keyboard-shortcuts
-                         {"Cmd-Enter"
-                          (fn [_cm]
-                            (t/send-eval!
-                             (db-get :exec-ent)
-                             (fn [m]
-                               (db-assoc :exec-ent m)
-                               (if (db-get :show-history?)
-                                 (t/history m #(db-assoc :history %))
-                                 (t/send-search (db-get :search-query)
-                                                #(db-assoc :search-results %)))
-                               )))}
+        "No results")]
+     [:div.bt.mv3]
+     [:div.flex
+      [codemirror
+       {:default-value (or snippet new-snippet-text)
+        :on-cm         #(db-assoc-in [:editor :snippet-cm] %)
+        :parinfer?     true
+        :cm-opts       {:keyboard-shortcuts
+                        {"Cmd-Enter"
+                         (fn [_cm]
+                           (t/send-eval!
+                            (db-get :exec-ent)
+                            (fn [m]
+                              (db-assoc :exec-ent m)
+                              (if (db-get :show-history?)
+                                (t/history m #(db-assoc :history %))
+                                (t/send-search (db-get :search-query)
+                                               #(db-assoc :search-results %)))
+                              )))}
 
-                         :on-changes
-                         (fn [cm _]
-                           (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]
-       [codemirror
-        {:default-value (str result)
-         :st-value-fn   (comp :result :exec-ent)
-         :cm-opts       {:readOnly true}}]]]]))
+                        :on-changes
+                        (fn [cm _]
+                          (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]
+      [codemirror
+       {:default-value (str result)
+        :st-value-fn   (comp :result :exec-ent)
+        :cm-opts       {:readOnly true}}]]]))
 
 
 (defn document
@@ -169,9 +172,8 @@
       [:style {:type "text/css"} s])]
    (for [l links]
      [:link {:rel "stylesheet" :href l}])
-   [:body.sans-serif
-
-    [:div#root [app]]
+   [:body
+    [:div#root.sans-serif [app]]
     (for [{:keys [src script]} js]
       [:script (when src {:src src}) script])]])
 
