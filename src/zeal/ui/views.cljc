@@ -21,7 +21,8 @@
      ;"cmd+z"       #(js/console.log "undo")
      }))
 
-(def new-snippet-text ";; New Snippet")
+(def new-snippet-text
+  ";; New Snippet\n;; cmd+return to eval\n;; eval `help` for info")
 (defn cm-set-value [cm s]
   (.setValue (.-doc cm) (str s)))
 
