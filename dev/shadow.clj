@@ -8,7 +8,7 @@
 (defstate shadow
   :start (do (shadow.server/start!)
              (shadow.api/watch :app))
-  :stop (do (shadow.server/stop!)
+  :stop (do #_(shadow.server/stop!)
             (shadow.api/stop-worker :app)))
 
 

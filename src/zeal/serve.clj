@@ -22,9 +22,8 @@
   [:<>
    [:meta {:charset "UTF-8"}]
    [views/document
-    {:styles []
-     :links  [
-              "css/tachyons.css"
+    {:styles [".prewrap { white-space: pre-wrap; } .break-all { word-break: break-all };"]
+     :links  ["css/tachyons.css"
               "css/codemirror.css"
               "css/font-awesome/css/all.css"]
      :js     [{:src "js/compiled/main.js"}

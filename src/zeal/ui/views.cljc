@@ -26,6 +26,9 @@
 (defn cm-set-value [cm s]
   (.setValue (.-doc cm) (str s)))
 
+(defn init-parinfer [cm]
+  #?(:cljs (pcm/init cm)))
+
 (defn init-codemirror
   [{:as opts :keys [node on-cm from-textarea? on-change on-changes keyboard-shortcuts]}]
   #?(:cljs
@@ -50,26 +53,30 @@
 
 
 (defn codemirror [{:as props :keys [default-value cm-opts st-value-fn on-cm parinfer?]}]
-  (let [node (uix/ref)
-        cm   (uix/ref)]
+  (let [node     (uix/ref)
+        cm       (uix/ref)
+        cm-init? (uix/state false)]
     (when st-value-fn
       (st/on-change st-value-fn #(cm-set-value @cm %)))
     [:div.w-50.h4
-     #?(:cljs
-        (merge
-         {:ref #(when-not @node
-                  (reset! node %)
-                  (init-codemirror
-                   (merge {:node         %
-                           :on-cm        (fn [cm-instance]
-                                           (reset! cm cm-instance)
-                                           (when parinfer? (pcm/init cm-instance))
-                                           (when on-cm (on-cm cm-instance)))
-                           :value        default-value
-                           :lineWrapping true
-                           :lineNumbers  false}
-                          cm-opts)))}
-         (dissoc props :cm-opts :st-value-fn :on-cm :parinfer?)))]))
+     (merge
+      {:ref #(when-not @node
+               (reset! node %)
+               (init-codemirror
+                (merge {:node         %
+                        :on-cm        (fn [cm-instance]
+                                        (reset! cm cm-instance)
+                                        (when parinfer? (init-parinfer cm-instance))
+                                        (when on-cm
+                                          (reset! cm-init? true)
+                                          (on-cm cm-instance)))
+                        :value        default-value
+                        :lineWrapping true
+                        :lineNumbers  false}
+                       cm-opts)))}
+      (dissoc props :cm-opts :st-value-fn :on-cm :parinfer?))
+     (when-not @cm-init?
+       [:pre.f6.ma0.break-all.prewrap default-value])]))
 
 (defn app []
   (let [search-query   (<sub :search-query)
@@ -116,11 +123,13 @@
             [:div.w3.flex.items-center.f7.overflow-hidden
              (subs (str id) 0 8)]
             ;[:pre.bg-gray.white.ma0 snippet]
-            [:pre.w-50.ws-normal.f6.ma0.ml3
-             {:style {:white-space :pre-wrap}}
+            [:pre.w-50.f6.ma0.ml3
+             {:style {:white-space :pre-wrap
+                      :word-break  :break-all}}
              snippet]
-            [:pre.w-50.ws-normal.f6.ma0.ml3
-             {:style {:white-space :pre-wrap}}
+            [:pre.w-50.f6.ma0.ml3
+             {:style {:white-space :pre-wrap
+                      :word-break  :break-all}}
              result]
             [:i.pointer.fas.fa-history.flex.self-center.pa1.br2.child
              {:class    (if show-history?
