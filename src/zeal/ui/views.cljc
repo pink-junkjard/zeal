@@ -91,21 +91,36 @@
        [:input.outline-0
         {:ref       #(db-assoc :search-node %)
          :value     search-query
+         :on-focus  (fn [_]
+                      (when (and (empty? search-query) (not (db-get :show-history?)))
+                        (t/send [:recent-exec-ents {:n 10}]
+                                #(db-assoc :search-results %))))
+         :on-blur   (fn [_]
+                      (when (empty? search-query)
+                       (db-assoc :search-results nil
+                                 :show-history? false
+                                 :history nil
+                                 :history-ent nil)))
          :on-change (fn [e]
                       (let [q (.. e -target -value)]
                         (db-assoc :search-query q)
-                        (t/send-search q #(db-assoc :search-results %))))}]
+                        (if (db-get :show-history?)
+                          (t/history (db-get :history-ent) #(db-assoc :history %))
+                          (t/send-search q #(db-assoc :search-results %)))))}]
        [:button
         {:on-click #(do
                       (cm-set-value (db-get-in [:editor :snippet-cm]) new-snippet-text)
 
                       (db-assoc :search-query ""
                                 :search-results nil
+                                :show-history? false
+                                :history nil
+                                :history-ent nil
                                 :exec-ent {:snippet new-snippet-text
                                            :name    false}))}
         "new"]]
       (cond
-        (or show-history? (and (not-empty search-results) (not-empty search-query)))
+        (or show-history? (not-empty search-results))
         [:div.ph2.overflow-auto
          {:style {:max-height :40%}}
          (for [{:as           exec-ent
@@ -117,7 +132,7 @@
                  search-results)
                :let [name-id-or-hash (or name (subs (str (if show-history?
                                                            content-hash
-                                                           id)) 0 8))]]
+                                                           id)) 0 7))]]
            [:div.flex.pv2.align-center.hover-bg-light-gray.pointer.ph1.hide-child.code
             {:key      (str name "-" id "-" tx-id)
              :style    {:max-height "3rem"}
@@ -163,14 +178,20 @@
              {:class    (if show-history?
                           "bg-gray white hover-bg-white hover-black"
                           "hover-bg-white")
-              :on-click (fn [_]
+              :on-click (fn [e]
+                          (.preventDefault e)
+                          (.stopPropagation e)
                           (if show-history?
                             (t/send-search search-query
-                                           #(db-assoc :search-results %
-                                                      :show-history? false))
-                            (t/history exec-ent
-                                       #(db-assoc :history %
-                                                  :show-history? true))))}]])]
+                                           #(do
+                                              #?(:cljs (js/console.log :res %))
+                                              (db-assoc :search-results %
+                                                        :show-history? false)))
+                            (do
+                              (db-assoc :history-ent exec-ent)
+                              (t/history exec-ent
+                                         #(db-assoc :history %
+                                                    :show-history? true)))))}]])]
         (not-empty search-query)
         "No results")]
      [:div.bt.mv3]
@@ -182,17 +203,17 @@
         :cm-opts       {:keyboard-shortcuts
                         {"Cmd-Enter"
                          (fn [_cm]
-                           (t/send-eval!
-                            (-> (db-get :exec-ent)
-                                (update :snippet gstr/trim))
-                            (fn [{:as m :keys [snippet]}]
-                              (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
-                              (db-assoc :exec-ent m)
-                              (if (db-get :show-history?)
-                                (t/history m #(db-assoc :history %))
-                                (t/send-search (db-get :search-query)
-                                               #(db-assoc :search-results %)))
-                              )))}
+                           #?(:cljs
+                              (t/send-eval!
+                               (-> (db-get :exec-ent)
+                                   (update :snippet gstr/trim))
+                               (fn [{:as m :keys [snippet]}]
+                                 (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+                                 (db-assoc :exec-ent m)
+                                 (if (db-get :show-history?)
+                                   (t/history m #(db-assoc :history %))
+                                   (t/send-search (db-get :search-query)
+                                                  #(db-assoc :search-results %)))))))}
 
                         :on-changes
                         (fn [cm _]

@@ -103,6 +103,16 @@
            (sort-by :time >)
            vec))))
 
+(defn recent-exec-ents [{:keys [n]}]
+  (let [res      (->> (q {:find  '[?e]
+                          :where '[[?e :snippet]
+                                   [?e :result]]})
+                      (map (comp entity first)))]
+    (->> res
+         (sort-by :time >)
+         (take n)
+         vec)))
+
 (defn search-eval-log [q]
   (if (empty? q)
     nil

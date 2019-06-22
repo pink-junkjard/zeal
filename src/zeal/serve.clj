@@ -96,6 +96,10 @@
   [[_ {:keys [q]}]]
   (zc/search-eval-log q))
 
+(defmethod multi-handler :recent-exec-ents
+  [[_ opts]]
+  (zc/recent-exec-ents opts))
+
 (defmethod multi-handler :history
   [[_ {id :crux.db/id}]]
   (zc/entity-history id {:with-history-info? true}))
