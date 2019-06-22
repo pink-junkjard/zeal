@@ -81,8 +81,6 @@
 
 ;;; eval
 
-(def eval-log (atom []))
-
 (defn search
   "Takes a query, a collection of maps and keys to strings in each map to search.
   Returns a coll with maps that matched ordered by date."
@@ -105,8 +103,7 @@
 (defn search-eval-log [q]
   (if (empty? q)
     nil
-    (crux-search q))
-  #_(search q @eval-log [:snippet :result]))
+    (crux-search q)))
 
 (defn eval-and-log-exec-ent! [{:keys [snippet] :as exec-ent}]
   (try
@@ -117,24 +114,6 @@
       execd)
     (catch Exception e
       (println e))))
-
-(defn eval-and-log-string! [s]
-  (let [ret {:id      (UUID/randomUUID)
-             :time    (.getTime (Date.))
-             :snippet s
-             :result  (pr-str (eval (read-string (str "(do " s ")"))))}]
-    (do
-      (put! [(dissoc ret :id)])
-      (swap! eval-log conj ret)
-      ret)))
-
-(defn eval-and-log! [s]
-  (let [ret {:id      (UUID/randomUUID)
-             :time    (.getTime (Date.))
-             :snippet s
-             :result  (eval s)}]
-    (do (swap! eval-log conj ret)
-        ret)))
 
 
 (comment
