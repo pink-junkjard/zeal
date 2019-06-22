@@ -56,10 +56,13 @@
 (defn history [eid]
   (crux/history crux eid))
 
-(defn entity-history [eid]
-  (let [h (history eid)]
-    (for [{:keys [crux.tx/tx-time crux.db/id]} h]
-      (crux/entity (crux/db crux tx-time tx-time) id))))
+(defn entity-history
+  ([eid] (entity-history eid {:with-history-info? false}))
+  ([eid {:keys [with-history-info?]}]
+   (let [h (history eid)]
+     (for [{:as h-ent :keys [crux.tx/tx-time crux.db/id]} h]
+       (cond-> (crux/entity (crux/db crux tx-time tx-time) id)
+         with-history-info? (merge (dissoc h-ent :crux.db/id)))))))
 
 (defn some-strings-include? [q & strings]
   (let [q (str/lower-case q)]

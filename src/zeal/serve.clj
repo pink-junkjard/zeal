@@ -98,7 +98,7 @@
 
 (defmethod multi-handler :history
   [[_ {id :crux.db/id}]]
-  (zc/entity-history id))
+  (zc/entity-history id {:with-history-info? true}))
 
 (defmethod multi-handler :merge-entity
   [[_ {id :crux.db/id :as ent}]]

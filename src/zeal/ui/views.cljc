@@ -6,7 +6,8 @@
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
             [zeal.ui.talk :as t]
-            #?@(:cljs [[den1k.shortcuts :as sc :refer [global-shortcuts]]])
+            #?@(:cljs [[den1k.shortcuts :as sc :refer [global-shortcuts]]
+                       [goog.string :as gstr]])
             #?@(:cljs [["codemirror" :as cm]
                        ["codemirror/mode/clojure/clojure"]
                        ["codemirror/addon/edit/closebrackets"]
@@ -107,44 +108,56 @@
         (or show-history? (and (not-empty search-results) (not-empty search-query)))
         [:div.ph2.overflow-auto
          {:style {:max-height :40%}}
-         (for [{:as   exec-ent
-                :keys [crux.db/id time name snippet result]}
+         (for [{:as           exec-ent
+                :keys         [time name snippet result]
+                :crux.db/keys [id content-hash]
+                :crux.tx/keys [tx-id]}
                (if show-history?
                  history
-                 search-results)]
-           [:div.flex.pv2.align-center.overflow-hidden.hover-bg-light-gray.pointer.ph1.hide-child
-            {:key      (str name "-" id "-" time)
+                 search-results)
+               :let [name-id-or-hash (or name (subs (str (if show-history?
+                                                           content-hash
+                                                           id)) 0 8))]]
+           [:div.flex.pv2.align-center.hover-bg-light-gray.pointer.ph1.hide-child.code
+            {:key      (str name "-" id "-" tx-id)
              :style    {:max-height "3rem"}
              :on-click #(do (st/db-assoc :exec-ent exec-ent)
                             ;; setting directly instead of syncing editor with st-value-fn
                             ;; because when the editor value is reset on every change
                             ;; the caret moves to index 0
                             (cm-set-value (db-get-in [:editor :snippet-cm]) snippet))}
-            [:div.w3.flex.items-center.f7.overflow-hidden
-             {:contentEditable                true
-              :suppressContentEditableWarning true
-              :on-blur                        #(let [text (not-empty (.. % -target -innerText))]
-                                                 (t/send [:merge-entity {:crux.db/id id
-                                                                         :name       text}]
-                                                         (fn [m]
-                                                           ;; todo better to have a norm'd db here
-                                                           (st/db-update :search-results
-                                                                         (fn [res]
-                                                                           (mapv (fn [{:as rm rid :crux.db/id}]
-                                                                                   (if (= rid id)
-                                                                                     m
-                                                                                     rm))
-                                                                                 res)))
-                                                           (db-assoc :exec-ent m))))}
-             (or name (subs (str id) 0 8))]
-            ;[:pre.bg-gray.white.ma0 snippet]
-            [:pre.w-50.f6.ma0.ml3
+            [:div.w3.items-center.f7.outline-0.self-center.overflow-hidden
+             ; to .truncate need to remove on focus and add back on blur
+             {:contentEditable
+              true
+              :suppressContentEditableWarning
+              true
+              :on-blur
+              (fn [e]
+                (let [text (not-empty (.. e -target -innerText))]
+                  (set! (.. e -target -innerHTML) name-id-or-hash)
+                  (t/send [:merge-entity {:crux.db/id id
+                                          :name       text}]
+                          (fn [m]
+                            (if (db-get :show-history?)
+                              (t/history m #(db-assoc :history %))
+                              (st/db-update :search-results
+                                            (fn [res]
+                                              (mapv (fn [{:as rm rid :crux.db/id}]
+                                                      (if (= rid id)
+                                                        m
+                                                        rm))
+                                                    res))))))))}
+             name-id-or-hash]
+            [:pre.w-50.f6.ma0.ml3.self-center.overflow-hidden
              {:style {:white-space :pre-wrap
-                      :word-break  :break-all}}
+                      :word-break  :break-all
+                      :max-height  :3rem}}
              snippet]
-            [:pre.w-50.f6.ma0.ml3
+            [:pre.w-50.f6.ma0.ml3.self-center.overflow-hidden
              {:style {:white-space :pre-wrap
-                      :word-break  :break-all}}
+                      :word-break  :break-all
+                      :max-height  :3rem}}
              result]
             [:i.pointer.fas.fa-history.flex.self-center.pa1.br2.child.w2.tc
              {:class    (if show-history?
@@ -170,8 +183,10 @@
                         {"Cmd-Enter"
                          (fn [_cm]
                            (t/send-eval!
-                            (db-get :exec-ent)
-                            (fn [m]
+                            (-> (db-get :exec-ent)
+                                (update :snippet gstr/trim))
+                            (fn [{:as m :keys [snippet]}]
+                              (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
                               (db-assoc :exec-ent m)
                               (if (db-get :show-history?)
                                 (t/history m #(db-assoc :history %))
