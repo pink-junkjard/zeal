@@ -100,6 +100,15 @@
   [[_ {id :crux.db/id}]]
   (zc/entity-history id))
 
+(defmethod multi-handler :merge-entity
+  [[_ {id :crux.db/id :as ent}]]
+  (some-> id
+          zc/entity
+          (merge ent)
+          vector
+          (zc/put! {:blocking? true}))
+  (zc/entity id))
+
 (def resource-handler
   (-> (constantly {:status 200})
       (wrap-resource "public")

@@ -24,7 +24,9 @@
 (defstate _init-db
   :start (do (put! data)))
 
-(defn- add-id-if-none-exists [{:as e id :crux.db/id}]
+(defn- add-id-if-none-exists
+  [{:as e id :crux.db/id}]
+  {:pre [(map? e)]}
   (cond-> e (nil? id) (assoc :crux.db/id (UUID/randomUUID))))
 
 (def put-tx
@@ -33,8 +35,8 @@
            [:crux.tx/put m]))))
 
 (defn put!
-  ([data] (put! data false))
-  ([data blocking?]
+  ([data] (put! data {:blocking? false}))
+  ([data {:keys [blocking?]}]
    (let [ret (crux/submit-tx
               crux
               (into [] put-tx data))]
@@ -46,6 +48,10 @@
 
 (defn entity [eid]
   (crux/entity (crux/db crux) eid))
+
+(defn q-entity [q-expr]
+  (->> (q q-expr)
+       (map (comp entity first))))
 
 (defn history [eid]
   (crux/history crux eid))
@@ -59,15 +65,19 @@
   (let [q (str/lower-case q)]
     (boolean (some #(str/includes? (str/lower-case %) q) strings))))
 
+
 (defn crux-search [q-str]
-  (->> (q {:find  '[?e]
-           :where '[[?e :snippet ?s]
-                    [?e :result ?r]
-                    [(zeal.core/some-strings-include? ?search-string ?s ?r) ?match]]
-           :args  [{:?search-string q-str}]})
-       (map (comp entity first))
-       (sort-by :time >)
-       vec))
+  (let [res      (->> (q {:find  '[?e]
+                          :where '[[?e :name ?n]
+                                   [?e :snippet ?s]
+                                   [?e :result ?r]
+                                   [(zeal.core/some-strings-include? ?search-string ?n ?s ?r) ?match]]
+                          :args  [{:?search-string q-str}]})
+                      (map (comp entity first)))
+        sort-fn  #(sort-by :time > %)
+        names    (->> res (filter :name) sort-fn)
+        no-names (->> res (remove :name) sort-fn)]
+    (vec (concat names no-names))))
 
 ;;; eval
 
@@ -103,7 +113,7 @@
     (let [execd (-> exec-ent (assoc :time (.getTime (Date.))
                                     :result (eval/do-eval-string snippet))
                     add-id-if-none-exists)]
-      (put! [execd] true)
+      (put! [execd] {:blocking? true})
       execd)
     (catch Exception e
       (println e))))
@@ -136,3 +146,17 @@
  )
 
 ;(search "zipmap" @eval-log [:snippet :result])
+
+(comment
+ ;; DANGER WIPE DB
+ (let [all (q '{:find  [?e]
+                :where [[?e :crux.db/id]]})]
+   (crux/submit-tx
+    crux
+    (into []
+          (comp
+           (map first)
+           (map (fn [m]
+                  [:crux.tx/evict m])))
+          all)))
+ )

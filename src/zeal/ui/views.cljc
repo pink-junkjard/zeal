@@ -66,10 +66,9 @@
                 (merge {:node         %
                         :on-cm        (fn [cm-instance]
                                         (reset! cm cm-instance)
+                                        (reset! cm-init? true)
                                         (when parinfer? (init-parinfer cm-instance))
-                                        (when on-cm
-                                          (reset! cm-init? true)
-                                          (on-cm cm-instance)))
+                                        (when on-cm (on-cm cm-instance)))
                         :value        default-value
                         :lineWrapping true
                         :lineNumbers  false}
@@ -101,19 +100,20 @@
 
                       (db-assoc :search-query ""
                                 :search-results nil
-                                :exec-ent {:snippet new-snippet-text}))}
+                                :exec-ent {:snippet new-snippet-text
+                                           :name    false}))}
         "new"]]
       (cond
         (or show-history? (and (not-empty search-results) (not-empty search-query)))
         [:div.ph2.overflow-auto
          {:style {:max-height :40%}}
          (for [{:as   exec-ent
-                :keys [crux.db/id time snippet result]}
+                :keys [crux.db/id time name snippet result]}
                (if show-history?
                  history
                  search-results)]
            [:div.flex.pv2.align-center.overflow-hidden.hover-bg-light-gray.pointer.ph1.hide-child
-            {:key      (str id "-" time)
+            {:key      (str name "-" id "-" time)
              :style    {:max-height "3rem"}
              :on-click #(do (st/db-assoc :exec-ent exec-ent)
                             ;; setting directly instead of syncing editor with st-value-fn
@@ -121,7 +121,22 @@
                             ;; the caret moves to index 0
                             (cm-set-value (db-get-in [:editor :snippet-cm]) snippet))}
             [:div.w3.flex.items-center.f7.overflow-hidden
-             (subs (str id) 0 8)]
+             {:contentEditable                true
+              :suppressContentEditableWarning true
+              :on-blur                        #(let [text (not-empty (.. % -target -innerText))]
+                                                 (t/send [:merge-entity {:crux.db/id id
+                                                                         :name       text}]
+                                                         (fn [m]
+                                                           ;; todo better to have a norm'd db here
+                                                           (st/db-update :search-results
+                                                                         (fn [res]
+                                                                           (mapv (fn [{:as rm rid :crux.db/id}]
+                                                                                   (if (= rid id)
+                                                                                     m
+                                                                                     rm))
+                                                                                 res)))
+                                                           (db-assoc :exec-ent m))))}
+             (or name (subs (str id) 0 8))]
             ;[:pre.bg-gray.white.ma0 snippet]
             [:pre.w-50.f6.ma0.ml3
              {:style {:white-space :pre-wrap
@@ -131,7 +146,7 @@
              {:style {:white-space :pre-wrap
                       :word-break  :break-all}}
              result]
-            [:i.pointer.fas.fa-history.flex.self-center.pa1.br2.child
+            [:i.pointer.fas.fa-history.flex.self-center.pa1.br2.child.w2.tc
              {:class    (if show-history?
                           "bg-gray white hover-bg-white hover-black"
                           "hover-bg-white")
@@ -185,4 +200,3 @@
     [:div#root.sans-serif [app]]
     (for [{:keys [src script]} js]
       [:script (when src {:src src}) script])]])
-
