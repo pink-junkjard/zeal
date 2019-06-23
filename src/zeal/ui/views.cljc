@@ -59,7 +59,7 @@
         cm-init? (uix/state false)]
     (when st-value-fn
       (st/on-change st-value-fn #(cm-set-value @cm %)))
-    [:div.w-50.h4
+    [:div.w-50.h-100
      (merge
       {:ref #(when-not @node
                (reset! node %)
@@ -95,12 +95,14 @@
                       (when (and (empty? search-query) (not (db-get :show-history?)))
                         (t/send [:recent-exec-ents {:n 10}]
                                 #(db-assoc :search-results %))))
-         :on-blur   (fn [_]
-                      (when (empty? search-query)
-                       (db-assoc :search-results nil
-                                 :show-history? false
-                                 :history nil
-                                 :history-ent nil)))
+         #_#_:on-blur (fn [_]
+                        (js/setTimeout
+                         #(when (and (empty? search-query) (not (db-get :show-history?)))
+                            (db-assoc :search-results nil
+                                      :show-history? false
+                                      :history nil
+                                      :history-ent nil))
+                         100))
          :on-change (fn [e]
                       (let [q (.. e -target -value)]
                         (db-assoc :search-query q)
@@ -182,20 +184,22 @@
                           (.preventDefault e)
                           (.stopPropagation e)
                           (if show-history?
-                            (t/send-search search-query
-                                           #(do
-                                              #?(:cljs (js/console.log :res %))
-                                              (db-assoc :search-results %
+                            (if (empty? search-query)
+                              (t/send [:recent-exec-ents {:n 10}]
+                                      #(db-assoc :search-results %
+                                                 :show-history? false))
+                              (t/send-search search-query
+                                             #(db-assoc :search-results %
                                                         :show-history? false)))
-                            (do
-                              (db-assoc :history-ent exec-ent)
-                              (t/history exec-ent
-                                         #(db-assoc :history %
-                                                    :show-history? true)))))}]])]
+
+                            (t/history exec-ent
+                                       #(db-assoc :history %
+                                                  :history-ent exec-ent
+                                                  :show-history? true))))}]])]
         (not-empty search-query)
         "No results")]
      [:div.bt.mv3]
-     [:div.flex
+     [:div.flex.h-100
       [codemirror
        {:default-value (or snippet new-snippet-text)
         :on-cm         #(db-assoc-in [:editor :snippet-cm] %)
