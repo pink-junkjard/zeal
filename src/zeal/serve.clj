@@ -24,8 +24,9 @@
    [views/document
     {:styles [".prewrap { white-space: pre-wrap; } .break-all { word-break: break-all };"]
      :links  ["css/tachyons.css"
+              "css/font-awesome/css/all.css"
               "css/codemirror.css"
-              "css/font-awesome/css/all.css"]
+              "css/codemirror-show-hint.css"]
      :js     [{:src "js/compiled/main.js"}
               {:script "zeal.ui.core.init()"}]}]])
 

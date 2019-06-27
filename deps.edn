@@ -28,6 +28,7 @@
 
   ;; utils
   camel-snake-kebab            {:mvn/version "0.4.0"}
+  appliedscience/js-interop    {:mvn/version "0.1.20"}
   }
  :aliases
  {:dev

@@ -7,10 +7,12 @@
             [clojure.pprint :refer [pprint]]
             [zeal.ui.talk :as t]
             #?@(:cljs [[den1k.shortcuts :as sc :refer [global-shortcuts]]
+                       [applied-science.js-interop :as j]
                        [goog.string :as gstr]])
-            #?@(:cljs [["codemirror" :as cm]
+            #?@(:cljs [["codemirror" :as CodeMirror]
                        ["codemirror/mode/clojure/clojure"]
                        ["codemirror/addon/edit/closebrackets"]
+                       ["codemirror/addon/hint/show-hint.js"]
                        ["parinfer-codemirror" :as pcm]])))
 
 #?(:cljs
@@ -34,9 +36,9 @@
   [{:as opts :keys [node on-cm from-textarea? on-change on-changes keyboard-shortcuts]}]
   #?(:cljs
      (let [cm-fn (if from-textarea?
-                   (.-fromTextArea cm)
+                   (.-fromTextArea CodeMirror)
                    (fn [node opts]
-                     (cm. node opts)))
+                     (CodeMirror. node opts)))
            cm    (cm-fn node
                         (clj->js
                          (merge {:mode              "clojure"
@@ -201,37 +203,120 @@
       (not-empty search-query)
       "No results")))
 
+(def exec-ent-dep-result-path [:exec-ent-dep :result])
+
 (defn snippet-editor []
   (let [snippet (<sub (comp :snippet :exec-ent))]
     [codemirror
-     {:default-value (or snippet new-snippet-text)
-      :on-cm         #(db-assoc-in [:editor :snippet-cm] %)
-      :parinfer?     true
-      :cm-opts       {:keyboard-shortcuts
-                      {"Cmd-Enter"
-                       (fn [_cm]
-                         #?(:cljs
-                            (t/send-eval!
-                             (-> (db-get :exec-ent)
-                                 (update :snippet gstr/trim))
-                             (fn [{:as m :keys [snippet]}]
-                               (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
-                               (db-assoc :exec-ent m)
-                               (if (db-get :show-history?)
-                                 (t/history m #(db-assoc :history %))
-                                 (t/send-search (db-get :search-query)
-                                                #(db-assoc :search-results %)))))))}
+     {:default-value
+      (or snippet new-snippet-text)
 
-                      :on-changes
-                      (fn [cm _]
-                        (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]))
+      :on-cm
+      #(db-assoc-in [:editor :snippet-cm] %)
+
+      :parinfer?
+      true
+
+      :cm-opts
+      {:keyboard-shortcuts
+       {"Cmd-Enter"
+        (fn [_cm]
+          #?(:cljs
+             (t/send-eval!
+              (-> (db-get :exec-ent)
+                  (update :snippet gstr/trim))
+              (fn [{:as m :keys [snippet]}]
+                (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+                (db-assoc :exec-ent m)
+                (if (db-get :show-history?)
+                  (t/history m #(db-assoc :history %))
+                  (t/send-search (db-get :search-query)
+                                 #(db-assoc :search-results %)))))))
+        "Ctrl-S"
+        (fn [cm-inst]
+          #?(:cljs
+             (.showHint
+              cm-inst
+              #js {:completeSingle false
+                   ;:alignWithWord false
+
+                   :hint
+                                   (fn [cm-inst option]
+                                     (let [cursor
+                                           (.getCursor cm-inst)
+
+                                           token
+                                           (-> cm-inst
+                                               (j/call :getTokenAt cursor))
+
+                                           {:keys [ch line]} (j/lookup cursor)
+                                           {:keys [start]} (j/lookup token)
+
+                                           word
+                                           (-> (j/get token :string) gstr/trim)
+
+                                           assoc-dep-path
+                                           (fn [v]
+                                             (db-assoc-in exec-ent-dep-result-path v))
+
+                                           ents->cm-list
+                                           (fn [ents]
+                                             (let [completions
+                                                   (reduce
+                                                    (fn [out {:keys [crux.db/id name result]}]
+                                                      (let [res #js {:id     (str id)
+                                                                     :result result
+                                                                     :hint   (fn [cm data completion]
+                                                                               (let [{:keys [from to]} (j/lookup data)]
+                                                                                (j/call cm :replaceRange (j/get completion :text)
+                                                                                        from to "complete"))
+                                                                               ;this.cm.replaceRange (getText (completion), completion.from || data.from,
+                                                                               ;                              completion.to || data.to, "complete") ;
+
+                                                                               )
+                                                                     :text   (or name (subs (str id) 0 7))}]
+                                                        (j/push! out res)))
+                                                    #js[]
+                                                    ents)
+                                                   ret
+                                                   #js {:from (j/call CodeMirror :Pos line start)
+                                                        :to   (j/call CodeMirror :Pos line ch)
+                                                        :list completions}]
+
+                                               (.on CodeMirror ret "pick"
+                                                    #(assoc-dep-path nil))
+                                               (.on CodeMirror ret "close"
+                                                    #(assoc-dep-path nil))
+                                               (.on CodeMirror ret "select"
+                                                    (fn [sel _]
+                                                      (assoc-dep-path (.-result sel))))
+
+                                               ret
+                                               ))]
+                                       (js/Promise.
+                                        (fn [resolve]
+                                          (if (empty? word)
+                                            (t/send [:recent-exec-ents {:n 10}]
+                                                    #(resolve (ents->cm-list %)))
+                                            (t/send-search word
+                                                           #(resolve (ents->cm-list %))))))))
+                   }))
+
+          )
+        }
+
+       :on-changes
+       (fn [cm _]
+         (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]))
 
 (defn exec-result []
   (let [result (<sub (comp :result :exec-ent))]
-   [codemirror
-    {:default-value (str result)
-     :st-value-fn   (comp :result :exec-ent)
-     :cm-opts       {:readOnly true}}]))
+    [codemirror
+     {:default-value (str result)
+      :st-value-fn   #(or
+                       (get-in % exec-ent-dep-result-path)
+                       (-> % :exec-ent :result))
+      :cm-opts       {:readOnly true}}]))
 
 (defn app []
   [:main.app
