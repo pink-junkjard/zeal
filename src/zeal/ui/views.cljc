@@ -6,6 +6,7 @@
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
             [zeal.ui.talk :as t]
+            [zeal.eval.util :as eval.util]
             #?@(:cljs [[den1k.shortcuts :as sc :refer [global-shortcuts]]
                        [applied-science.js-interop :as j]
                        [goog.string :as gstr]])
@@ -205,6 +206,73 @@
 
 (def exec-ent-dep-result-path [:exec-ent-dep :result])
 
+(defn deps-completion [cm-inst option]
+  #?(:cljs
+     (let [cursor
+           (.getCursor cm-inst)
+
+           token
+           (-> cm-inst
+               (j/call :getTokenAt cursor))
+
+           {:keys [ch line]} (j/lookup cursor)
+           {:keys [start]} (j/lookup token)
+
+           word
+           (-> (j/get token :string) gstr/trim)
+
+           assoc-dep-path
+           (fn [v]
+             (db-assoc-in exec-ent-dep-result-path v))
+
+           ents->cm-list
+           (fn [ents]
+             (let [completions
+                   (reduce
+                    (fn [out {:keys [crux.db/id name result]}]
+                      (let [dtext        (or name (subs (str id) 0 7))
+                            replace-text (eval.util/dep-str-expr dtext id)
+                            res          #js {:id          (str id)
+                                              :result      result
+                                              :hint        (fn [cm data completion]
+                                                             (let [{:keys [from to]} (j/lookup data)]
+
+                                                               (j/call cm :replaceRange
+                                                                       replace-text
+                                                                       from to "complete")
+                                                               (j/call cm :markText
+                                                                       from
+                                                                       #js {:line (j/get from :line)
+                                                                            :ch   (+ (j/get from :ch) (count replace-text))}
+                                                                       #js {:className "bg-orange"
+                                                                            :atomic    true})))
+                                              :displayText dtext
+                                              :text        replace-text}]
+                        (j/push! out res)))
+                    #js[]
+                    ents)
+                   ret
+                   #js {:from (j/call CodeMirror :Pos line start)
+                        :to   (j/call CodeMirror :Pos line ch)
+                        :list completions}]
+
+               (.on CodeMirror ret "pick"
+                    #(assoc-dep-path nil))
+               (.on CodeMirror ret "close"
+                    #(assoc-dep-path nil))
+               (.on CodeMirror ret "select"
+                    (fn [sel _]
+                      (assoc-dep-path (.-result sel))))
+
+               ret))]
+       (js/Promise.
+        (fn [resolve]
+          (if (empty? word)
+            (t/send [:recent-exec-ents {:n 10}]
+                    #(resolve (ents->cm-list %)))
+            (t/send-search word
+                           #(resolve (ents->cm-list %)))))))))
+
 (defn snippet-editor []
   (let [snippet (<sub (comp :snippet :exec-ent))]
     [codemirror
@@ -238,71 +306,7 @@
              (.showHint
               cm-inst
               #js {:completeSingle false
-                   ;:alignWithWord false
-
-                   :hint
-                                   (fn [cm-inst option]
-                                     (let [cursor
-                                           (.getCursor cm-inst)
-
-                                           token
-                                           (-> cm-inst
-                                               (j/call :getTokenAt cursor))
-
-                                           {:keys [ch line]} (j/lookup cursor)
-                                           {:keys [start]} (j/lookup token)
-
-                                           word
-                                           (-> (j/get token :string) gstr/trim)
-
-                                           assoc-dep-path
-                                           (fn [v]
-                                             (db-assoc-in exec-ent-dep-result-path v))
-
-                                           ents->cm-list
-                                           (fn [ents]
-                                             (let [completions
-                                                   (reduce
-                                                    (fn [out {:keys [crux.db/id name result]}]
-                                                      (let [res #js {:id     (str id)
-                                                                     :result result
-                                                                     :hint   (fn [cm data completion]
-                                                                               (let [{:keys [from to]} (j/lookup data)]
-                                                                                (j/call cm :replaceRange (j/get completion :text)
-                                                                                        from to "complete"))
-                                                                               ;this.cm.replaceRange (getText (completion), completion.from || data.from,
-                                                                               ;                              completion.to || data.to, "complete") ;
-
-                                                                               )
-                                                                     :text   (or name (subs (str id) 0 7))}]
-                                                        (j/push! out res)))
-                                                    #js[]
-                                                    ents)
-                                                   ret
-                                                   #js {:from (j/call CodeMirror :Pos line start)
-                                                        :to   (j/call CodeMirror :Pos line ch)
-                                                        :list completions}]
-
-                                               (.on CodeMirror ret "pick"
-                                                    #(assoc-dep-path nil))
-                                               (.on CodeMirror ret "close"
-                                                    #(assoc-dep-path nil))
-                                               (.on CodeMirror ret "select"
-                                                    (fn [sel _]
-                                                      (assoc-dep-path (.-result sel))))
-
-                                               ret
-                                               ))]
-                                       (js/Promise.
-                                        (fn [resolve]
-                                          (if (empty? word)
-                                            (t/send [:recent-exec-ents {:n 10}]
-                                                    #(resolve (ents->cm-list %)))
-                                            (t/send-search word
-                                                           #(resolve (ents->cm-list %))))))))
-                   }))
-
-          )
+                   :hint deps-completion})))
         }
 
        :on-changes

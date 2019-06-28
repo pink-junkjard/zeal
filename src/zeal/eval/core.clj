@@ -1,4 +1,5 @@
-(ns zeal.eval.core)
+(ns zeal.eval.core
+  (:require [zeal.eval.util]))
 
 (def set-ns
   (pr-str

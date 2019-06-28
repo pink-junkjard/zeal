@@ -10,6 +10,7 @@
             [zeal.ui.views :as views]
             [clojure.core.async :as a]
             [zeal.core :as zc]
+            [zeal.db :as db]
             [manifold.deferred :as d]
             [byte-streams :as bs]))
 
@@ -61,7 +62,6 @@
       (d/catch
        (fn [_]
          non-websocket-request))))
-;(mount/start)
 
 (defn echo-handler
   [req]
@@ -103,16 +103,16 @@
 
 (defmethod multi-handler :history
   [[_ {id :crux.db/id}]]
-  (zc/entity-history id {:with-history-info? true}))
+  (db/entity-history id {:with-history-info? true}))
 
 (defmethod multi-handler :merge-entity
   [[_ {id :crux.db/id :as ent}]]
   (some-> id
-          zc/entity
+          db/entity
           (merge ent)
           vector
-          (zc/put! {:blocking? true}))
-  (zc/entity id))
+          (db/put! {:blocking? true}))
+  (db/entity id))
 
 (def resource-handler
   (-> (constantly {:status 200})
