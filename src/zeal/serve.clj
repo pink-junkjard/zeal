@@ -23,11 +23,15 @@
   [:<>
    [:meta {:charset "UTF-8"}]
    [views/document
-    {:styles [".prewrap { white-space: pre-wrap; } .break-all { word-break: break-all };"]
+    {:styles ["
+    .CodeMirror { height: auto !important; }
+    .prewrap { white-space: pre-wrap; }
+    .break-all { word-break: break-all };"]
      :links  ["css/tachyons.css"
               "css/font-awesome/css/all.css"
               "css/codemirror.css"
-              "css/codemirror-show-hint.css"]
+              "css/codemirror-show-hint.css"
+              "https://fonts.googleapis.com/css?family=Faster+One&display=swap"]
      :js     [{:src "js/compiled/main.js"}
               {:script "zeal.ui.core.init()"}]}]])
 

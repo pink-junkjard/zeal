@@ -23,7 +23,8 @@
   den1k/shortcuts              {:git/url "https://github.com/den1k/shortcuts"
                                 :sha     "871cc945bc5d6f6af4b1a46e5918c36e3d4f1949"}
 
-  juxt/crux                    {:mvn/version "19.06-1.1.0-alpha"}
+  ;; if using SNAPSHOT version, pull https://github.com/juxt/crux and lein install
+  juxt/crux                    {:mvn/version "19.06-1.1.1-alpha-SNAPSHOT"}
   org.rocksdb/rocksdbjni       {:mvn/version "5.17.2"}
 
   ;; utils

@@ -7,7 +7,7 @@
             [clojure.pprint :refer [pprint]]
             [zeal.ui.talk :as t]
             [zeal.eval.util :as eval.util]
-            #?@(:cljs [[den1k.shortcuts :as sc :refer [global-shortcuts]]
+            #?@(:cljs [[den1k.shortcuts :as sc :refer [shortcuts global-shortcuts]]
                        [applied-science.js-interop :as j]
                        [goog.string :as gstr]])
             #?@(:cljs [["codemirror" :as CodeMirror]
@@ -62,7 +62,7 @@
         cm-init? (uix/state false)]
     (when st-value-fn
       (st/on-change st-value-fn #(cm-set-value @cm %)))
-    [:div.w-50.h-100
+    [:div
      (merge
       {:ref #(when-not @node
                (reset! node %)
@@ -89,7 +89,8 @@
 
 (defn new-snippet-btn []
   [:button
-   {:on-click #(do
+   {:class    ["f7 link dim br2 ph3 pv2 dib b--light-gray ba h2 b"]
+    :on-click #(do
                  (cm-set-value (db-get-in [:editor :snippet-cm]) new-snippet-text)
 
                  (db-assoc :search-query ""
@@ -99,110 +100,119 @@
                            :history-ent nil
                            :exec-ent {:snippet new-snippet-text
                                       :name    false}))}
-   "new"])
+   "NEW"])
 
 (defn search-input []
   (let [search-query (<sub :search-query)]
-    [:input.outline-0
-     {:ref       #(db-assoc :search-node %)
-      :value     search-query
-      :on-focus  #(show-recent-results)
-      ;; better to have sth like clicked outside
-      #_#_:on-blur (fn [_]
-                     (when (and (empty? search-query) (not (db-get :show-history?)))
-                       (db-assoc :search-results nil
-                                 :show-history? false
-                                 :history nil
-                                 :history-ent nil))
-                     )
-      :on-change (fn [e]
-                   (let [q (.. e -target -value)]
-                     (db-assoc :search-query q)
-                     (or (show-recent-results)
-                         (if (db-get :show-history?)
-                           (t/history (db-get :history-ent) #(db-assoc :history %))
-                           (t/send-search q #(db-assoc :search-results %))))))}]))
+    [:input.outline-0.bn.br2.w5.f6.ph3.pv2.shadow-4.h2
+     (merge
+      #?(:cljs
+         (shortcuts {"escape" #(db-assoc :search-results nil
+                                         :search-query ""
+                                         :show-history? false
+                                         :history nil
+                                         :history-ent nil)}))
+      {:style     {:box-shadow "rgba(0, 0, 0, 0.03) 0px 4px 3px 0px"}
+       :ref       #(db-assoc :search-node %)
+       :value     search-query
+       :on-focus  #(show-recent-results)
+       :on-change (fn [e]
+                    (let [q (.. e -target -value)]
+                      (db-assoc :search-query q)
+                      (or (show-recent-results)
+                          (if (db-get :show-history?)
+                            (t/history (db-get :history-ent) #(db-assoc :history %))
+                            (t/send-search q #(db-assoc :search-results %))))))})]))
 
 (defn search-results []
-  (let [search-query   (<sub :search-query)
-        search-results (<sub :search-results)
-        show-history?  (<sub :show-history?)
-        history        (<sub :history)]
-    (cond
-      (or show-history? (not-empty search-results))
-      [:div.ph2.overflow-auto
-       {:style {:max-height :40%}}
-       (for [{:as           exec-ent
-              :keys         [time name snippet result]
-              :crux.db/keys [id content-hash]
-              :crux.tx/keys [tx-id]}
-             (if show-history?
-               history
-               search-results)
-             :let [name-id-or-hash (or name (subs (str (if show-history?
-                                                         content-hash
-                                                         id)) 0 7))]]
-         [:div.flex.pv2.align-center.hover-bg-light-gray.pointer.ph1.hide-child.code
-          {:key      (str name "-" id "-" tx-id)
-           :style    {:max-height "3rem"}
-           :on-click #(do (st/db-assoc :exec-ent exec-ent)
-                          ;; setting directly instead of syncing editor with st-value-fn
-                          ;; because when the editor value is reset on every change
-                          ;; the caret moves to index 0
-                          (cm-set-value (db-get-in [:editor :snippet-cm]) snippet))}
-          [:div.w3.items-center.f7.outline-0.self-center.overflow-hidden
-           ; to .truncate need to remove on focus and add back on blur
-           {:contentEditable
-            true
-            :suppressContentEditableWarning
-            true
-            :on-blur
-            (fn [e]
-              (let [text (not-empty (.. e -target -innerText))]
-                (set! (.. e -target -innerHTML) name-id-or-hash)
-                (t/send [:merge-entity {:crux.db/id id
-                                        :name       text}]
-                        (fn [m]
-                          (if (db-get :show-history?)
-                            (t/history m #(db-assoc :history %))
-                            (st/db-update :search-results
-                                          (fn [res]
-                                            (mapv (fn [{:as rm rid :crux.db/id}]
-                                                    (if (= rid id)
-                                                      m
-                                                      rm))
-                                                  res))))))))}
-           name-id-or-hash]
-          [:pre.w-50.f6.ma0.ml3.self-center.overflow-hidden
-           {:style {:white-space :pre-wrap
-                    :word-break  :break-all
-                    :max-height  :3rem}}
-           snippet]
-          [:pre.w-50.f6.ma0.ml3.self-center.overflow-hidden
-           {:style {:white-space :pre-wrap
-                    :word-break  :break-all
-                    :max-height  :3rem}}
-           result]
-          [:i.pointer.fas.fa-history.flex.self-center.pa1.br2.child.w2.tc
-           {:class    (if show-history?
-                        "bg-gray white hover-bg-white hover-black"
-                        "hover-bg-white")
-            :on-click (fn [e]
-                        (if show-history?
-                          (if (empty? search-query)
-                            (t/send [:recent-exec-ents {:n 10}]
-                                    #(db-assoc :search-results %
-                                               :show-history? false))
-                            (t/send-search search-query
-                                           #(db-assoc :search-results %
-                                                      :show-history? false)))
+  (let [search-query     (<sub :search-query)
+        search-results   (<sub :search-results)
+        show-history?    (<sub :show-history?)
+        history          (<sub :history)
+        results?         (or show-history? (not-empty search-results))
+        no-results?      (if show-history?
+                           (empty? history)
+                           (empty? search-results))
+        show-no-results? (and no-results? (not-empty search-query))]
+    [:div
+     {:style {:max-height (if (or results? show-no-results?)
+                            :40%
+                            0)
+              :transition "max-height 0.3s ease-in-out"}}
+     (cond
+       results?
+       [:div.ph2.overflow-auto.mb2
+        (for [{:as           exec-ent
+               :keys         [time name snippet result]
+               :crux.db/keys [id content-hash]
+               :crux.tx/keys [tx-id]}
+              (if show-history?
+                history
+                search-results)
+              :let [name-id-or-hash (or name (subs (str (if show-history?
+                                                          content-hash
+                                                          id)) 0 7))]]
+          [:div.flex.pv2.align-center.hover-bg-light-gray.pointer.ph1.hide-child.code
+           {:key      (str name "-" id "-" tx-id)
+            :style    {:max-height "3rem"}
+            :on-click #(do (st/db-assoc :exec-ent exec-ent)
+                           ;; setting directly instead of syncing editor with st-value-fn
+                           ;; because when the editor value is reset on every change
+                           ;; the caret moves to index 0
+                           (cm-set-value (db-get-in [:editor :snippet-cm]) snippet))}
+           [:div.w3.items-center.f7.outline-0.self-center.overflow-hidden
+            ; to .truncate need to remove on focus and add back on blur
+            {:contentEditable
+             true
+             :suppressContentEditableWarning
+             true
+             :on-blur
+             (fn [e]
+               (let [text (not-empty (.. e -target -innerText))]
+                 (set! (.. e -target -innerHTML) name-id-or-hash)
+                 (t/send [:merge-entity {:crux.db/id id
+                                         :name       text}]
+                         (fn [m]
+                           (if (db-get :show-history?)
+                             (t/history m #(db-assoc :history %))
+                             (st/db-update :search-results
+                                           (fn [res]
+                                             (mapv (fn [{:as rm rid :crux.db/id}]
+                                                     (if (= rid id)
+                                                       m
+                                                       rm))
+                                                   res))))))))}
+            name-id-or-hash]
+           [:pre.w-50.f6.ma0.ml3.self-center.overflow-hidden
+            {:style {:white-space :pre-wrap
+                     :word-break  :break-all
+                     :max-height  :3rem}}
+            snippet]
+           [:pre.w-50.f6.ma0.ml3.self-center.overflow-hidden
+            {:style {:white-space :pre-wrap
+                     :word-break  :break-all
+                     :max-height  :3rem}}
+            result]
+           [:i.pointer.fas.fa-history.flex.self-center.pa1.br2.child.w2.tc
+            {:class    (if show-history?
+                         "bg-gray white hover-bg-white hover-black"
+                         "hover-bg-white")
+             :on-click (fn [e]
+                         (if show-history?
+                           (if (empty? search-query)
+                             (t/send [:recent-exec-ents {:n 10}]
+                                     #(db-assoc :search-results %
+                                                :show-history? false))
+                             (t/send-search search-query
+                                            #(db-assoc :search-results %
+                                                       :show-history? false)))
 
-                          (t/history exec-ent
-                                     #(db-assoc :history %
-                                                :history-ent exec-ent
-                                                :show-history? true))))}]])]
-      (not-empty search-query)
-      "No results")))
+                           (t/history exec-ent
+                                      #(db-assoc :history %
+                                                 :history-ent exec-ent
+                                                 :show-history? true))))}]])]
+       show-no-results?
+       "No results")]))
 
 (def exec-ent-dep-result-path [:exec-ent-dep :result])
 
@@ -275,62 +285,76 @@
 
 (defn snippet-editor []
   (let [snippet (<sub (comp :snippet :exec-ent))]
-    [codemirror
-     {:default-value
-      (or snippet new-snippet-text)
+    [:div.w-50.ba.b--light-gray
+     [codemirror
+      {;:class ["w-50"]
+       :default-value
+       (or snippet new-snippet-text)
 
-      :on-cm
-      #(db-assoc-in [:editor :snippet-cm] %)
+       :on-cm
+       #(db-assoc-in [:editor :snippet-cm] %)
 
-      :parinfer?
-      true
+       :parinfer?
+       true
 
-      :cm-opts
-      {:keyboard-shortcuts
-       {"Cmd-Enter"
-        (fn [_cm]
-          #?(:cljs
-             (t/send-eval!
-              (-> (db-get :exec-ent)
-                  (update :snippet gstr/trim))
-              (fn [{:as m :keys [snippet]}]
-                (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
-                (db-assoc :exec-ent m)
-                (if (db-get :show-history?)
-                  (t/history m #(db-assoc :history %))
-                  (t/send-search (db-get :search-query)
-                                 #(db-assoc :search-results %)))))))
-        "Ctrl-S"
-        (fn [cm-inst]
-          #?(:cljs
-             (.showHint
-              cm-inst
-              #js {:completeSingle false
-                   :hint deps-completion})))
-        }
+       :cm-opts
+       {:keyboard-shortcuts
+        {"Cmd-Enter"
+         (fn [_cm]
+           #?(:cljs
+              (t/send-eval!
+               (-> (db-get :exec-ent)
+                   (update :snippet gstr/trim))
+               (fn [{:as m :keys [snippet]}]
+                 (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+                 (db-assoc :exec-ent m)
+                 (if (db-get :show-history?)
+                   (t/history m #(db-assoc :history %))
+                   (t/send-search (db-get :search-query)
+                                  #(db-assoc :search-results %)))))))
+         "Ctrl-S"
+         (fn [cm-inst]
+           #?(:cljs
+              (.showHint
+               cm-inst
+               #js {:completeSingle false
+                    :hint           deps-completion})))
+         }
 
-       :on-changes
-       (fn [cm _]
-         (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]))
+        :on-changes
+        (fn [cm _]
+          (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]]))
 
 (defn exec-result []
   (let [result (<sub (comp :result :exec-ent))]
-    [codemirror
-     {:default-value (str result)
-      :st-value-fn   #(or
-                       (get-in % exec-ent-dep-result-path)
-                       (-> % :exec-ent :result))
-      :cm-opts       {:readOnly true}}]))
+    [:div.w-50.h-100.ml1.ba.b--light-gray
+     [codemirror
+      {;:class         ["w-50"]
+       :default-value (str result)
+       :st-value-fn   #(or
+                        (get-in % exec-ent-dep-result-path)
+                        (-> % :exec-ent :result))
+       :cm-opts       {:readOnly true}}]]))
+
+(defn logo []
+  [:span.f2.pl3
+   {:style {:font-family "'Faster One', cursive"}}
+   "Z"])
 
 (defn app []
-  [:main.app
+  [:main.app.h-100.flex.flex-column
+   {:style {:background "hsla(27, 14%, 97%, 1)"}}
    [:div
-    [:div.flex
+    [:div.flex.justify-between.items-center.pv2.ph3
+     [:div.w3
+      [logo]]
      [search-input]
-     [new-snippet-btn]]
+     [:div.w3
+      [new-snippet-btn]]]
     [search-results]]
-   [:div.bt.mv3]
-   [:div.flex.h-100
+   ;[:div.bt.mv1]
+   [:div.flex.h-100.w-100.ph2
+    ;{:style {:margin-left -10}}
     [snippet-editor]
     [exec-result]]])
 
