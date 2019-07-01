@@ -9,18 +9,19 @@
 
 (defn some-strings-include? [q & strings]
   (let [q (str/lower-case q)]
-    (boolean (some #(str/includes? (str/lower-case %) q) strings))))
+    (boolean (some #(and (string? %)
+                         (str/includes? (str/lower-case %) q)) strings))))
 
 
 (defn crux-search [q-str]
   (let [res      (db/q-entity
-                  {:find     '[?e ?t]
-                   :where    '[[?e :name ?n]
-                               [?e :snippet ?s]
-                               [?e :result ?r]
-                               [?e :time ?t]
-                               [(zeal.core/some-strings-include? ?search-string ?n ?s ?r) ?match]]
-                   :args     [{:?search-string q-str}]
+                  {:find  '[?e ?t]
+                   :where '[[?e :name ?n]
+                            [?e :snippet ?s]
+                            [?e :result ?r]
+                            [?e :time ?t]
+                            [(zeal.core/some-strings-include? ?search-string ?n ?s ?r)]]
+                   :args  [{:?search-string q-str}]
                    :limit    1000
                    :order-by '[[?t :desc]]})
         names    (filter :name res)
@@ -63,10 +64,13 @@
     nil
     (crux-search q)))
 
-(defn eval-and-log-exec-ent! [{:keys [snippet] :as exec-ent}]
+(defn eval-and-log-exec-ent! [{:keys [name snippet] :as exec-ent}]
   (try
-    (let [execd (-> exec-ent (assoc :time (.getTime (Date.))
-                                    :result (eval/do-eval-string snippet))
+    (let [execd (-> exec-ent
+                    (merge
+                     {:time   (.getTime (Date.))
+                      :result (eval/do-eval-string snippet)}
+                     (when-not name {:name false}))
                     db/add-id-if-none-exists)]
       (db/put! [execd] {:blocking? true})
       execd)
