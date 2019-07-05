@@ -26,7 +26,10 @@
      }))
 
 (def new-snippet-text
-  ";; New Snippet\n;; cmd+return to eval\n;; eval `help` for info")
+  ";; New Snippet
+;; cmd+return to eval
+;; ctrl+s to inline snippet results
+;; eval `help` for info")
 (defn cm-set-value [cm s]
   (.setValue (.-doc cm) (str s)))
 
