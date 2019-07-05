@@ -12,7 +12,6 @@
     (boolean (some #(and (string? %)
                          (str/includes? (str/lower-case %) q)) strings))))
 
-
 (defn crux-search [q-str]
   (let [res      (db/q-entity
                   {:find  '[?e ?t]
@@ -30,24 +29,6 @@
 
 ;;; eval
 
-(defn search
-  "Takes a query, a collection of maps and keys to strings in each map to search.
-  Returns a coll with maps that matched ordered by date."
-  [q coll ks]
-  (if (empty? q)
-    nil
-    (let [q (str/lower-case q)]
-      (->> coll
-           (filter
-            (fn [m]
-              (some
-               (fn [k]
-                 (let [text (k m)]
-                   (cond-> text
-                     (not (string? text)) pr-str
-                     true (-> str/lower-case (str/includes? q))))) ks)))
-           (sort-by :time >)
-           vec))))
 
 (defn recent-exec-ents [{:keys [n]}]
   (->> (db/q {:find     '[?e ?t]

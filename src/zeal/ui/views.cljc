@@ -134,14 +134,14 @@
                            (empty? history)
                            (empty? search-results))
         show-no-results? (and no-results? (not-empty search-query))]
-    [:div
+    [:div.overflow-auto
      {:style {:max-height (if (or results? show-no-results?)
                             :40%
                             0)
               :transition "max-height 0.3s ease-in-out"}}
      (cond
        results?
-       [:div.ph2.overflow-auto.mb2
+       [:div.ph2.mb2
         (for [{:as           exec-ent
                :keys         [time name snippet result]
                :crux.db/keys [id content-hash]
@@ -329,8 +329,7 @@
   (let [result (<sub (comp :result :exec-ent))]
     [:div.w-50.h-100.ml1.ba.b--light-gray
      [codemirror
-      {;:class         ["w-50"]
-       :default-value (str result)
+      {:default-value (str result)
        :st-value-fn   #(or
                         (get-in % exec-ent-dep-result-path)
                         (-> % :exec-ent :result))
@@ -342,7 +341,7 @@
    "Z"])
 
 (defn app []
-  [:main.app.h-100.flex.flex-column
+  [:main.app.h-100.flex.flex-column.overflow-hidden
    {:style {:background "hsla(27, 14%, 97%, 1)"}}
    [:div
     [:div.flex.justify-between.items-center.pv2.ph3
@@ -352,9 +351,7 @@
      [:div.w3
       [new-snippet-btn]]]
     [search-results]]
-   ;[:div.bt.mv1]
    [:div.flex.h-100.w-100.ph2
-    ;{:style {:margin-left -10}}
     [snippet-editor]
     [exec-result]]])
 
