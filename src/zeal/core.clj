@@ -47,19 +47,26 @@
     (crux-search q)))
 
 (defn eval-and-log-exec-ent! [{:keys [name snippet] :as exec-ent}]
-  (try
-    (let [evald (eval/do-eval-string snippet)
-          execd (-> exec-ent
-                    (merge
-                     {:time   (.getTime (Date.))
-                      :result evald
-                      :result-string (if (string? evald) false (pr-str evald))}
-                     (when-not name {:name false}))
-                    db/add-id-if-none-exists)]
-      (db/put! [execd] {:blocking? true})
-      execd)
-    (catch Exception e
-      (println e))))
+  (let [exec-ent
+        (-> exec-ent
+                     (merge
+                      {:time (.getTime (Date.))}
+                      (when-not name {:name false}))
+                     db/add-id-if-none-exists)
+        ret-exec-ent
+                 (try
+          (let [evald (eval/do-eval-string snippet)
+                execd (merge
+                       exec-ent
+                       {:result        evald
+                        :result-string (if (string? evald) false (pr-str evald))})]
+            execd)
+          (catch Exception e
+            (merge
+             exec-ent
+             {:result (pr-str e)})))]
+    (db/put! [ret-exec-ent] {:blocking? true})
+    ret-exec-ent))
 
 
 (comment
