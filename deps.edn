@@ -4,6 +4,7 @@
  {org.clojure/clojure          {:mvn/version "RELEASE"}
   org.clojure/tools.deps.alpha {:git/url "https://github.com/clojure/tools.deps.alpha.git"
                                 :sha     "e160f184f051f120014244679831a9bccb37c9de"}
+  org.clojure/clojurescript    {:mvn/version "RELEASE"}
 
   mount                        {:mvn/version "0.1.16"}
 

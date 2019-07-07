@@ -14,13 +14,14 @@
 
 (defn crux-search [q-str]
   (let [res      (db/q-entity
-                  {:find  '[?e ?t]
-                   :where '[[?e :name ?n]
-                            [?e :snippet ?s]
-                            [?e :result ?r]
-                            [?e :time ?t]
-                            [(zeal.core/some-strings-include? ?search-string ?n ?s ?r)]]
-                   :args  [{:?search-string q-str}]
+                  {:find     '[?e ?t]
+                   :where    '[[?e :name ?n]
+                               [?e :snippet ?s]
+                               [?e :result ?r]
+                               [?e :result-string ?rs]
+                               [?e :time ?t]
+                               [(zeal.core/some-strings-include? ?search-string ?n ?s ?r ?rs)]]
+                   :args     [{:?search-string q-str}]
                    :limit    1000
                    :order-by '[[?t :desc]]})
         names    (filter :name res)
@@ -47,10 +48,12 @@
 
 (defn eval-and-log-exec-ent! [{:keys [name snippet] :as exec-ent}]
   (try
-    (let [execd (-> exec-ent
+    (let [evald (eval/do-eval-string snippet)
+          execd (-> exec-ent
                     (merge
                      {:time   (.getTime (Date.))
-                      :result (eval/do-eval-string snippet)}
+                      :result evald
+                      :result-string (if (string? evald) false (pr-str evald))}
                      (when-not name {:name false}))
                     db/add-id-if-none-exists)]
       (db/put! [execd] {:blocking? true})

@@ -3,7 +3,8 @@
             [zeal.data :refer [data]]
             [mount.core :as mount :refer [defstate]])
   (:import (java.util UUID)
-           (crux.api ICruxAPI)))
+           (crux.api ICruxAPI)
+           (java.time Duration)))
 
 ;;;; Crux
 
@@ -36,7 +37,7 @@
    (let [ret (crux/submit-tx
               crux
               (into [] put-tx data))]
-     (when blocking? (crux/sync crux (:crux.tx/tx-time ret) nil))
+     (when blocking? (crux/sync crux (:crux.tx/tx-time ret) (Duration/ofSeconds 2)))
      ret)))
 
 (defn q [& args]

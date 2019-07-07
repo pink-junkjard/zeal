@@ -2,7 +2,7 @@
   (:require [aleph.http :as http]
             [mount.core :as mount :refer [defstate]]
             [manifold.stream :as s]
-            [aleph.http.client-middleware :refer [parse-transit transit-encode]]
+            [cognitect.transit :as transit]
             [uix.dom.alpha :as uix.dom]
             [ring.middleware.resource :refer [wrap-resource]]
             [ring.middleware.content-type :refer [wrap-content-type]]
@@ -12,7 +12,20 @@
             [zeal.core :as zc]
             [zeal.db :as db]
             [manifold.deferred :as d]
-            [byte-streams :as bs]))
+            [byte-streams :as bs])
+  (:import (java.io ByteArrayOutputStream InputStream)))
+
+(defn transit-encode
+  "Resolve and apply Transit's JSON/MessagePack encoding."
+  [out type & [opts]]
+  (let [output (ByteArrayOutputStream.)]
+    (transit/write (transit/writer output type opts) out)
+    (.toByteArray output)))
+
+(defn parse-transit
+  "Resolve and apply Transit's JSON/MessagePack decoding."
+  [^InputStream in type & [opts]]
+  (transit/read (transit/reader in type opts)))
 
 (defn handler [req]
   {:status  200
@@ -85,11 +98,14 @@
 (defn- wrap-multi-handler
   ([handler] (fn [req] (wrap-multi-handler handler req)))
   ([handler req]
-   {:status  200
-    :headers {"content-type" "application/transit+json"}
-    :body    (transit-encode
-              (handler (parse-transit (:body req) :json))
-              :json)}))
+   (let [handled (handler (parse-transit (:body req) :json))]
+     {:status  200
+      :headers {"content-type" "application/transit+json"}
+      :body    (transit-encode handled
+                               :json
+                               {:transform (comp
+                                            #(cond-> % (var? %) pr-str)
+                                            transit/write-meta)})})))
 
 (defmulti multi-handler first)
 

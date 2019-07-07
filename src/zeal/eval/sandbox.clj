@@ -9,4 +9,4 @@
 (defn snippet-result [dep-str]
   (let [id (zeal.eval.util/dep-str->id dep-str)
         {:keys [result]} (zeal.db/entity id)]
-    (load-string result)))
+    result))

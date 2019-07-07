@@ -146,7 +146,7 @@
        results?
        [:div.ph2.mb2
         (for [{:as           exec-ent
-               :keys         [time name snippet result]
+               :keys         [time name snippet result result-string]
                :crux.db/keys [id content-hash]
                :crux.tx/keys [tx-id]}
               (if show-history?
@@ -195,7 +195,7 @@
             {:style {:white-space :pre-wrap
                      :word-break  :break-all
                      :max-height  :3rem}}
-            result]
+            (or result-string result)]
            [:i.pointer.fas.fa-history.flex.self-center.pa1.br2.child.w2.tc
             {:class    (if show-history?
                          "bg-gray white hover-bg-white hover-black"

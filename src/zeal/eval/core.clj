@@ -8,5 +8,4 @@
 
 (defn do-eval-string [s]
   (-> (str set-ns \newline \newline s)
-      load-string
-      pr-str))
+      load-string))
