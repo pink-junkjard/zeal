@@ -49,12 +49,12 @@
 (defn eval-and-log-exec-ent! [{:keys [name snippet] :as exec-ent}]
   (let [exec-ent
         (-> exec-ent
-                     (merge
-                      {:time (.getTime (Date.))}
-                      (when-not name {:name false}))
-                     db/add-id-if-none-exists)
+            (merge
+             {:time (.getTime (Date.))}
+             (when-not name {:name false}))
+            db/add-id-if-none-exists)
         ret-exec-ent
-                 (try
+        (try
           (let [evald (eval/do-eval-string snippet)
                 execd (merge
                        exec-ent
@@ -62,6 +62,7 @@
                         :result-string (if (string? evald) false (pr-str evald))})]
             execd)
           (catch Exception e
+            ;; Return error as string
             (merge
              exec-ent
              {:result (pr-str e)})))]

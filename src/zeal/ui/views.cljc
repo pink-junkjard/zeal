@@ -257,7 +257,7 @@
                                                                        from
                                                                        #js {:line (j/get from :line)
                                                                             :ch   (+ (j/get from :ch) (count replace-text))}
-                                                                       #js {:className "bg-orange"
+                                                                       #js {:className "bg-washed-yellow"
                                                                             :atomic    true})))
                                               :displayText dtext
                                               :text        replace-text}]
@@ -305,16 +305,22 @@
         {"Cmd-Enter"
          (fn [_cm]
            #?(:cljs
-              (t/send-eval!
-               (-> (db-get :exec-ent)
-                   (update :snippet gstr/trim))
-               (fn [{:as m :keys [snippet]}]
-                 (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
-                 (db-assoc :exec-ent m)
-                 (if (db-get :show-history?)
-                   (t/history m #(db-assoc :history %))
-                   (t/send-search (db-get :search-query)
-                                  #(db-assoc :search-results %)))))))
+              (do
+                (db-assoc :search-query ""
+                          :search-results nil
+                          :show-history? false
+                          :history nil
+                          :history-ent nil)
+                (t/send-eval!
+                 (-> (db-get :exec-ent)
+                     (update :snippet gstr/trim))
+                 (fn [{:as m :keys [snippet]}]
+                   (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+                   (db-assoc :exec-ent m)
+                   (if (db-get :show-history?)
+                     (t/history m #(db-assoc :history %))
+                     (t/send-search (db-get :search-query)
+                                    #(db-assoc :search-results %))))))))
          "Ctrl-S"
          (fn [cm-inst]
            #?(:cljs

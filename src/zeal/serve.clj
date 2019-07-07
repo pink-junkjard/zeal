@@ -27,6 +27,9 @@
   [^InputStream in type & [opts]]
   (transit/read (transit/reader in type opts)))
 
+(defn transit-encode-json-with-meta [out & [opts]]
+  (transit-encode out :json (merge {:transform transit/write-meta} opts)))
+
 (defn handler [req]
   {:status  200
    :headers {"content-type" "text/plain"}
@@ -95,17 +98,36 @@
    :headers {"content-type" "text/html"}
    :body    (uix.dom/render-to-string [html])})
 
+(def multi-handler-req-dispatch-fn first)
+
+(defmulti multi-handler-response-fn
+  (fn [body handled] (multi-handler-req-dispatch-fn body)))
+
+(defmethod multi-handler-response-fn :eval-and-log
+  [_ handled]
+  {:status  200
+   :headers {"content-type" "application/transit+json"}
+   :body    (try
+              (transit-encode-json-with-meta handled)
+              (catch Exception e
+                ;; transit can't handle classes and vars so we fallback to string
+                (println ::str-fallback e)
+                (transit-encode-json-with-meta (update handled :result pr-str))))})
+
+(defmethod multi-handler-response-fn :default
+  [_ handled]
+  {:status  200
+   :headers {"content-type" "application/transit+json"}
+   :body    (transit-encode handled
+                            :json
+                            {:transform transit/write-meta})})
+
 (defn- wrap-multi-handler
   ([handler] (fn [req] (wrap-multi-handler handler req)))
   ([handler req]
-   (let [handled (handler (parse-transit (:body req) :json))]
-     {:status  200
-      :headers {"content-type" "application/transit+json"}
-      :body    (transit-encode handled
-                               :json
-                               {:transform (comp
-                                            #(cond-> % (var? %) pr-str)
-                                            transit/write-meta)})})))
+   (let [body    (parse-transit (:body req) :json)
+         handled (handler body)]
+     (multi-handler-response-fn body handled))))
 
 (defmulti multi-handler first)
 
