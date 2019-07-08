@@ -46,6 +46,14 @@
     nil
     (crux-search q)))
 
+(defn valid-edn [x]
+  (let [s (pr-str x)]
+    (try
+      (read-string s)
+      [x s]
+      (catch Exception _
+        [nil s]))))
+
 (defn eval-and-log-exec-ent! [{:keys [name snippet] :as exec-ent}]
   (let [exec-ent
         (-> exec-ent
@@ -55,11 +63,16 @@
             db/add-id-if-none-exists)
         ret-exec-ent
         (try
-          (let [evald (eval/do-eval-string snippet)
+          (let [[evald-edn evald-str]
+                (-> snippet
+                    eval/do-eval-string
+                    valid-edn)
                 execd (merge
                        exec-ent
-                       {:result        evald
-                        :result-string (if (string? evald) false (pr-str evald))})]
+                       {:result        (or evald-edn evald-str)
+                        :result-string (if (string? evald-edn)
+                                         false
+                                         evald-str)})]
             execd)
           (catch Exception e
             ;; Return error as string
@@ -68,7 +81,6 @@
              {:result (pr-str e)})))]
     (db/put! [ret-exec-ent] {:blocking? true})
     ret-exec-ent))
-
 
 (comment
  (do
