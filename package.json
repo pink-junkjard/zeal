@@ -13,6 +13,8 @@
     "codemirror": "^5.47.0",
     "parinfer-codemirror": "^1.4.2",
     "react": "^16.8.6",
-    "react-dom": "^16.8.6"
+    "react-dom": "^16.8.6",
+    "vega": "^5.4.0",
+    "vega-lite": "^2.7.0"
   }
 }

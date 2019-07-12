@@ -67,12 +67,15 @@
                 (-> snippet
                     eval/do-eval-string
                     valid-edn)
-                execd (merge
-                       exec-ent
-                       {:result        (or evald-edn evald-str)
-                        :result-string (if (string? evald-edn)
-                                         false
-                                         evald-str)})]
+                edn-meta  (some-> evald-edn meta (select-keys [:render-as]))
+                evald-edn (cond-> evald-edn (some? edn-meta) (with-meta nil))
+                execd     (merge
+                           exec-ent
+                           {:result        (or evald-edn evald-str)
+                            :result-string (if (string? evald-edn)
+                                             false
+                                             evald-str)}
+                           edn-meta)]
             execd)
           (catch Exception e
             ;; Return error as string

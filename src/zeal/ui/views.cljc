@@ -1,12 +1,12 @@
 (ns zeal.ui.views
   (:require [uix.dom.alpha :as uix.dom]
             [uix.core.alpha :as uix]
-            [zeal.ui.macros :as m]
             [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in db-get db-get-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
             [zeal.ui.talk :as t]
             [zeal.eval.util :as eval.util]
+            [zeal.ui.vega :as vega]
             #?@(:cljs [[den1k.shortcuts :as sc :refer [shortcuts global-shortcuts]]
                        [applied-science.js-interop :as j]
                        [goog.string :as gstr]])
@@ -334,15 +334,37 @@
         (fn [cm _]
           (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]]))
 
+(def renderers
+  {:default (fn [result]
+              [codemirror
+               {:default-value (str result)
+                :st-value-fn   #(or
+                                 (get-in % exec-ent-dep-result-path)
+                                 (-> % :exec-ent :result))
+                :cm-opts       {:readOnly true}}])
+   :hiccup  (fn [result]
+              [:div {:ref (fn [node]
+                            (when node
+                              (uix.dom/render result node)))}])
+   :vega    (fn [result]
+              [:div {:ref (fn [node]
+                            (when node
+                              (vega/init-vega-lite node {:spec result})))}])})
+
 (defn exec-result []
-  (let [result (<sub (comp :result :exec-ent))]
-    [:div.w-50.h-100.ml1.ba.b--light-gray
-     [codemirror
-      {:default-value (str result)
-       :st-value-fn   #(or
-                        (get-in % exec-ent-dep-result-path)
-                        (-> % :exec-ent :result))
-       :cm-opts       {:readOnly true}}]]))
+  (let [result           (<sub (comp :result :exec-ent))
+        render-as        (<sub (comp :render-as :exec-ent))
+        default-renderer (:default renderers)
+        renderer         (get renderers render-as default-renderer)]
+    [:<>
+     [:div.w-50.h-100.ml1.ba.b--light-gray
+      (into [:div] (map (fn [r] [:span.mh2.pointer
+                                 {:on-click #(t/send [:merge-entity {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
+                                                                     :render-as  r}]
+                                                     (fn [m]
+                                                       (db-assoc :exec-ent m)))}
+                                 (name r)])) (keys renderers))
+      (renderer result)]]))
 
 (defn logo []
   [:span.f2.pl3
