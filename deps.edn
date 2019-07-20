@@ -12,6 +12,8 @@
 
   aleph                        {:mvn/version "0.4.6"}
   ring/ring-core               {:mvn/version "1.7.1"}
+  ring-oauth2                  {:mvn/version "0.1.4"}
+  ring/ring-defaults           {:mvn/version "0.3.2"}
   cljs-http                    {:mvn/version "0.1.46"}
   com.cognitect/transit-clj    {:mvn/version "0.8.313"}
   com.cognitect/transit-cljs   {:mvn/version "0.8.256"}

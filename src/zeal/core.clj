@@ -67,7 +67,7 @@
                 (-> snippet
                     eval/do-eval-string
                     valid-edn)
-                edn-meta  (some-> evald-edn meta (select-keys [:render-as]))
+                edn-meta  (some-> evald-edn meta (select-keys [:renderer]))
                 evald-edn (cond-> evald-edn (some? edn-meta) (with-meta nil))
                 execd     (merge
                            exec-ent

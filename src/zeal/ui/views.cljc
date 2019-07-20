@@ -7,6 +7,7 @@
             [zeal.ui.talk :as t]
             [zeal.eval.util :as eval.util]
             [zeal.ui.vega :as vega]
+            [zeal.util.react-js :refer [make-component]]
             #?@(:cljs [[den1k.shortcuts :as sc :refer [shortcuts global-shortcuts]]
                        [applied-science.js-interop :as j]
                        [goog.string :as gstr]])
@@ -15,6 +16,8 @@
                        ["codemirror/addon/edit/closebrackets"]
                        ["codemirror/addon/hint/show-hint.js"]
                        ["parinfer-codemirror" :as pcm]])))
+
+(def app-background "hsla(27, 14%, 97%, 1)")
 
 #?(:cljs
    (global-shortcuts
@@ -288,7 +291,7 @@
 
 (defn snippet-editor []
   (let [snippet (<sub (comp :snippet :exec-ent))]
-    [:div.w-50.ba.b--light-gray
+    [:div.w-50.ba.b--light-gray.br2.overflow-hidden.bg-white
      [codemirror
       {;:class ["w-50"]
        :default-value
@@ -335,36 +338,63 @@
           (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]]))
 
 (def renderers
-  {:default (fn [result]
-              [codemirror
-               {:default-value (str result)
-                :st-value-fn   #(or
-                                 (get-in % exec-ent-dep-result-path)
-                                 (-> % :exec-ent :result))
-                :cm-opts       {:readOnly true}}])
-   :hiccup  (fn [result]
-              [:div {:ref (fn [node]
-                            (when node
-                              (uix.dom/render result node)))}])
-   :vega    (fn [result]
-              [:div {:ref (fn [node]
-                            (when node
-                              (vega/init-vega-lite node {:spec result})))}])})
+  {nil        (fn [result]
+                [codemirror
+                 {:default-value (str result)
+                  :st-value-fn   #(or
+                                   (get-in % exec-ent-dep-result-path)
+                                   (-> % :exec-ent :result))
+                  :cm-opts       {:readOnly true}}])
+   :hiccup    (fn [result]
+                [:div
+                 {:ref (fn [node]
+                         (when node
+                           (uix.dom/render result node)))}])
+   :vega-lite (fn [result]
+                [:div {:ref (fn [node]
+                              (when node
+                                (vega/init-vega-lite node {:spec result})))}])})
+
+(defn error-boundary [on-error]
+  #?(:cljs
+     (make-component
+      "error-boundary"
+      #js {:componentDidCatch (fn [error info]
+                                (on-error {:error error :info info}))
+           :render            (fn []
+                                (this-as this
+                                  (j/get-in this [:props :children])))})))
 
 (defn exec-result []
-  (let [result           (<sub (comp :result :exec-ent))
-        render-as        (<sub (comp :render-as :exec-ent))
-        default-renderer (:default renderers)
-        renderer         (get renderers render-as default-renderer)]
+  (let [result         (<sub (comp :result :exec-ent))
+        rndr           (<sub (comp :renderer :exec-ent))
+        renderer       (get renderers rndr (get renderers nil))
+        error-state    (uix/state nil)
+        on-error       (fn [error] (reset! error-state error))
+        error-boundary (error-boundary on-error)]
     [:<>
-     [:div.w-50.h-100.ml1.ba.b--light-gray
-      (into [:div] (map (fn [r] [:span.mh2.pointer
-                                 {:on-click #(t/send [:merge-entity {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
-                                                                     :render-as  r}]
-                                                     (fn [m]
-                                                       (db-assoc :exec-ent m)))}
-                                 (name r)])) (keys renderers))
-      (renderer result)]]))
+     [:div.w-50.h-100.ml1.ba.b--light-gray.br2.overflow-hidden.bg-white
+      (into [:div.flex {:style {:background app-background}}]
+            (map (fn [r]
+                   [:div.pointer.pv1.ph2.br2.br--top
+                    {:class    (when (= rndr r)
+                                 "bg-black-10")
+                     :on-click #(t/send [:merge-entity
+                                         {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
+                                          :renderer   r}]
+                                        (fn [m]
+                                          (db-assoc :exec-ent m)
+                                          (reset! error-state nil)))}
+                    (if (nil? r)
+                      "default"
+                      (name r))]))
+            (keys renderers))
+
+      (if-let [err (:error @error-state)]
+        [:div.pa2.bg-washed-red
+         (str "Error using renderer " rndr)
+         [:pre.break-all.prewrap (str err)]]
+        [:> error-boundary [renderer result]])]]))
 
 (defn logo []
   [:span.f2.pl3
@@ -373,7 +403,7 @@
 
 (defn app []
   [:main.app.h-100.flex.flex-column.overflow-hidden
-   {:style {:background "hsla(27, 14%, 97%, 1)"}}
+   {:style {:background app-background}}
    [:div
     [:div.flex.justify-between.items-center.pv2.ph3
      [:div.w3
