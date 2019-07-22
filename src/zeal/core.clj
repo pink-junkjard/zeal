@@ -12,7 +12,7 @@
     (boolean (some #(and (string? %)
                          (str/includes? (str/lower-case %) q)) strings))))
 
-(defn crux-search [q-str]
+(defn search-snippets [q-str]
   (let [res      (db/q-entity
                   {:find     '[?e ?t]
                    :where    '[[?e :name ?n]
@@ -44,7 +44,7 @@
 (defn search-eval-log [q]
   (if (empty? q)
     nil
-    (crux-search q)))
+    (search-snippets q)))
 
 (defn valid-edn [x]
   (let [s (pr-str x)]
@@ -100,7 +100,7 @@
  (let [all (db/q '{:find  [?e]
                    :where [[?e :crux.db/id]]})]
    (crux.api/submit-tx
-    db/crux
+    db/node
     (into []
           (comp
            (map first)
