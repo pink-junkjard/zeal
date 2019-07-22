@@ -394,7 +394,7 @@
         [:div.pa2.bg-washed-red
          (str "Error using renderer " rndr)
          [:pre.break-all.prewrap (str err)]]
-        [:> error-boundary [renderer result]])]]))
+        #?(:cljs [:> error-boundary [renderer result]]))]]))
 
 (defn logo []
   [:span.f2.pl3
