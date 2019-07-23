@@ -39,7 +39,9 @@
   [:<>
    [:meta {:charset "UTF-8"}]
    [views/document
-    {:styles ["
+    {:meta [{:name "viewport"
+             :content "width=device-width, initial-scale=1"}]
+     :styles ["
     .CodeMirror { height: auto !important; }
     .prewrap { white-space: pre-wrap; }
     .break-all { word-break: break-all };"]

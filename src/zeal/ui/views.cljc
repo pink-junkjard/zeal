@@ -109,26 +109,35 @@
    "NEW"])
 
 (defn search-input []
-  (let [search-query (<sub :search-query)]
-    [:input.outline-0.bn.br2.w5.f6.ph3.pv2.shadow-4.h2
-     (merge
-      #?(:cljs
-         (shortcuts {"escape" #(db-assoc :search-results nil
-                                         :search-query ""
-                                         :show-history? false
-                                         :history nil
-                                         :history-ent nil)}))
-      {:style     {:box-shadow "rgba(0, 0, 0, 0.03) 0px 4px 3px 0px"}
-       :ref       #(db-assoc :search-node %)
-       :value     search-query
-       :on-focus  #(show-recent-results)
-       :on-change (fn [e]
-                    (let [q (.. e -target -value)]
-                      (db-assoc :search-query q)
-                      (or (show-recent-results)
-                          (if (db-get :show-history?)
-                            (t/history (db-get :history-ent) #(db-assoc :history %))
-                            (t/send-search q #(db-assoc :search-results %))))))})]))
+  (let [search-query   (<sub :search-query)
+        search-results (<sub :search-results)]
+    [:div.flex
+     [:input.outline-0.bn.br2.w5.f6.ph3.pv2.shadow-4.h2
+      (merge
+       #?(:cljs
+          (shortcuts {"escape" #(db-assoc :search-results nil
+                                          :search-query ""
+                                          :show-history? false
+                                          :history nil
+                                          :history-ent nil)}))
+       {:style     {:box-shadow    "rgba(0, 0, 0, 0.03) 0px 4px 3px 0px"
+                    :padding-right 30}
+        :ref       #(db-assoc :search-node %)
+        :value     search-query
+        :on-focus  #(show-recent-results)
+        :on-change (fn [e]
+                     (let [q (.. e -target -value)]
+                       (db-assoc :search-query q)
+                       (or (show-recent-results)
+                           (if (db-get :show-history?)
+                             (t/history (db-get :history-ent) #(db-assoc :history %))
+                             (t/send-search q #(db-assoc :search-results %))))))})]
+     (when (or (not-empty search-query) (not-empty search-results))
+       [:span.flex.items-center
+        {:style {:margin-left -27}}
+        [:i.fas.fa-times-circle.mh1.gray.hover-black
+         {:on-click #(st/db-assoc :search-results nil
+                                  :search-query "")}]])]))
 
 (defn search-results []
   (let [search-query     (<sub :search-query)
@@ -158,7 +167,7 @@
               :let [name-id-or-hash (or name (subs (str (if show-history?
                                                           content-hash
                                                           id)) 0 7))]]
-          [:div.flex.pv2.align-center.hover-bg-light-gray.pointer.ph1.hide-child.code
+          [:div.flex.pv2.hover-bg-light-gray.pointer.ph1.hide-child.code
            {:key      (str name "-" id "-" tx-id)
             :style    {:max-height "3rem"}
             :on-click #(do (st/db-assoc :exec-ent exec-ent)
@@ -291,7 +300,7 @@
 
 (defn snippet-editor []
   (let [snippet (<sub (comp :snippet :exec-ent))]
-    [:div.w-50.ba.b--light-gray.br2.overflow-hidden.bg-white
+    [:div.w-50.ba.b--light-gray.br2.overflow-hidden.bg-white.dn.db-ns
      [codemirror
       {;:class ["w-50"]
        :default-value
@@ -372,29 +381,29 @@
         error-state    (uix/state nil)
         on-error       (fn [error] (reset! error-state error))
         error-boundary (error-boundary on-error)]
-    [:<>
-     [:div.w-50.h-100.ml1.ba.b--light-gray.br2.overflow-hidden.bg-white
-      (into [:div.flex {:style {:background app-background}}]
-            (map (fn [r]
-                   [:div.pointer.pv1.ph2.br2.br--top
-                    {:class    (when (= rndr r)
-                                 "bg-black-10")
-                     :on-click #(t/send [:merge-entity
-                                         {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
-                                          :renderer   r}]
-                                        (fn [m]
-                                          (db-assoc :exec-ent m)
-                                          (reset! error-state nil)))}
-                    (if (nil? r)
-                      "default"
-                      (name r))]))
-            (keys renderers))
+    [:div.w-50-ns.w-100.h-100.ml1.ba.b--light-gray.br2.overflow-hidden.bg-white
+     ; renderer tabs
+     (into [:div.flex {:style {:background app-background}}]
+           (map (fn [r]
+                  [:div.pointer.pv1.ph2.br2.br--top.hover-bg-light-gray
+                   {:class    (when (= rndr r)
+                                "bg-black-10")
+                    :on-click #(t/send [:merge-entity
+                                        {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
+                                         :renderer   r}]
+                                       (fn [m]
+                                         (db-assoc :exec-ent m)
+                                         (reset! error-state nil)))}
+                   (if (nil? r)
+                     "default"
+                     (name r))]))
+           (keys renderers))
 
-      (if-let [err (:error @error-state)]
-        [:div.pa2.bg-washed-red
-         (str "Error using renderer " rndr)
-         [:pre.break-all.prewrap (str err)]]
-        #?(:cljs [:> error-boundary [renderer result]]))]]))
+     (if-let [err (:error @error-state)]
+       [:div.pa2.bg-washed-red
+        (str "Error using renderer " rndr)
+        [:pre.break-all.prewrap (str err)]]
+       #?(:cljs [:> error-boundary [renderer result]]))]))
 
 (defn logo []
   [:span.f2.pl3
@@ -409,7 +418,7 @@
      [:div.w3
       [logo]]
      [search-input]
-     [:div.w3
+     [:div.w3.dn.di-ns
       [new-snippet-btn]]]
     [search-results]]
    [:div.flex.h-100.w-100.ph2
@@ -418,13 +427,15 @@
 
 
 (defn document
-  [{:as opts :keys [js styles links]}]
+  [{:as opts :keys [js styles links meta]}]
   [:html
    [:head
+    (for [m meta]
+      [:meta m])
     (for [s styles]
-      [:style {:type "text/css"} s])]
-   (for [l links]
-     [:link {:rel "stylesheet" :href l}])
+      [:style {:type "text/css"} s])
+    (for [l links]
+      [:link {:rel "stylesheet" :href l}])]
    [:body
     [:div#root.sans-serif [app]]
     (for [{:keys [src script]} js]
