@@ -1,7 +1,10 @@
 (ns zeal.ui.state
   (:require [uix.core.alpha :as uix]))
 
-(defonce db (atom {:search-query ""}))
+(def ^:dynamic *init-state* {})
+
+(defonce db (atom (merge {:search-query ""}
+                         #?(:cljs (js->clj js/__initState :keywordize-keys true)))))
 
 (defn db-get [k]
   (get @db k))

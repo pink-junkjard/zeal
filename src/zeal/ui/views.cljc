@@ -435,8 +435,12 @@
     (for [s styles]
       [:style {:type "text/css"} s])
     (for [l links]
-      [:link {:rel "stylesheet" :href l}])]
+      [:link {:rel "stylesheet" :href l}])
+    [:title "Zeal"]]
    [:body
     [:div#root.sans-serif [app]]
     (for [{:keys [src script]} js]
-      [:script (when src {:src src}) script])]])
+      [:script
+       (if src
+         {:src src}
+         {:dangerouslySetInnerHTML {:__html script}})])]])

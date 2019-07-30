@@ -3,16 +3,22 @@
             [mount.core :as mount :refer [defstate]]
             [manifold.stream :as s]
             [cognitect.transit :as transit]
+            [cheshire.core :as json]
             [uix.dom.alpha :as uix.dom]
             [ring.middleware.resource :refer [wrap-resource]]
+            [ring.middleware.params :refer [wrap-params]]
+            [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
             [ring.middleware.content-type :refer [wrap-content-type]]
             [ring.middleware.not-modified :refer [wrap-not-modified]]
             [zeal.ui.views :as views]
-            [clojure.core.async :as a]
+            [zeal.ui.state :as ui-state]
             [zeal.core :as zc]
             [zeal.db :as db]
+            [zeal.state :as st]
+            [zeal.auth.core :as auth]
             [manifold.deferred :as d]
-            [byte-streams :as bs])
+            [byte-streams :as bs]
+            [medley.core :as md])
   (:import (java.io ByteArrayOutputStream InputStream)))
 
 (defn transit-encode
@@ -30,17 +36,12 @@
 (defn transit-encode-json-with-meta [out & [opts]]
   (transit-encode out :json (merge {:transform transit/write-meta} opts)))
 
-(defn handler [req]
-  {:status  200
-   :headers {"content-type" "text/plain"}
-   :body    "hello!"})
-
 (defn html []
   [:<>
    [:meta {:charset "UTF-8"}]
    [views/document
-    {:meta [{:name "viewport"
-             :content "width=device-width, initial-scale=1"}]
+    {:meta   [{:name    "viewport"
+               :content "width=device-width, initial-scale=1"}]
      :styles ["
     .CodeMirror { height: auto !important; }
     .prewrap { white-space: pre-wrap; }
@@ -50,18 +51,28 @@
               "css/codemirror.css"
               "css/codemirror-show-hint.css"
               "https://fonts.googleapis.com/css?family=Faster+One&display=swap"]
-     :js     [{:src "js/compiled/main.js"}
+     :js     [{:script (str "__initState = "
+                            (json/generate-string ui-state/*init-state*))}
+              {:src "js/compiled/main.js"}
               {:script "zeal.ui.core.init()"}]}]])
 
-(defn index [_]
+(defn init-state [{:as req :keys [session]}]
+  {:user (select-keys
+          (:user session)
+          [:user/email])})
+
+(defn index [req]
   (let [res (s/stream)]
     (future
-     (uix.dom/render-to-stream
-      [html] {:on-chunk #(s/put! res %)})
+     (binding [ui-state/*init-state* (init-state req)]
+       (uix.dom/render-to-stream
+        [html] {:on-chunk #(s/put! res %)}))
      (s/close! res))
-    {:status  200
-     :headers {"content-type" "text/html"}
-     :body    res}))
+    (merge
+     (select-keys req [:session])
+     {:status  200
+      :headers {"content-type" "text/html"}
+      :body    res})))
 
 
 (def non-websocket-request
@@ -103,33 +114,38 @@
 (def multi-handler-req-dispatch-fn first)
 
 (defmulti multi-handler-response-fn
-  (fn [body handled] (multi-handler-req-dispatch-fn body)))
+  (fn [body _handled] (multi-handler-req-dispatch-fn body)))
 
 (defmethod multi-handler-response-fn :eval-and-log
-  [_ handled]
-  {:status  200
-   :headers {"content-type" "application/transit+json"}
-   :body    (try
-              (transit-encode-json-with-meta handled)
-              (catch Exception e
-                ;; transit can't handle classes and vars so we fallback to string
-                (println ::str-fallback e)
-                (transit-encode-json-with-meta (update handled :result pr-str))))})
+  [req handled]
+  (merge
+   (select-keys req [:session])
+   {:status  200
+    :headers {"content-type" "application/transit+json"}
+    :body    (try
+               (transit-encode-json-with-meta handled)
+               (catch Exception e
+                 ;; transit can't handle classes and vars so we fallback to string
+                 (println ::str-fallback e)
+                 (transit-encode-json-with-meta (update handled :result pr-str))))}))
 
 (defmethod multi-handler-response-fn :default
-  [_ handled]
-  {:status  200
-   :headers {"content-type" "application/transit+json"}
-   :body    (transit-encode handled
-                            :json
-                            {:transform transit/write-meta})})
-
+  [req handled]
+  (merge
+   (select-keys req [:session])
+   {:status  200
+    :headers {"content-type" "application/transit+json"}
+    :body    (transit-encode handled
+                             :json
+                             {:transform transit/write-meta})}))
+(declare auth-token)
 (defn- wrap-multi-handler
   ([handler] (fn [req] (wrap-multi-handler handler req)))
   ([handler req]
-   (let [body    (parse-transit (:body req) :json)
-         handled (handler body)]
-     (multi-handler-response-fn body handled))))
+   (binding [st/*session* (:session req)]
+     (let [body    (parse-transit (:body req) :json)
+           handled (handler body)]
+       (multi-handler-response-fn body handled)))))
 
 (defmulti multi-handler first)
 
@@ -164,15 +180,53 @@
       (wrap-content-type)
       (wrap-not-modified)))
 
-(defn handler [{:as req :keys [uri]}]
-  (let [handle
+(defn default-middleware [handler]
+  (-> handler
+      (auth/oauth-wrapper)
+      (wrap-params)
+      (wrap-defaults
+       (-> site-defaults
+           (assoc-in [:session :cookie-attrs :same-site] :lax)
+           (assoc :security {;:anti-forgery  true ; FIXME
+                             :xss-protection       {:enable? true, :mode :block}
+                             :frame-options        :sameorigin
+                             :content-type-options :nosniff
+                             })))))
+
+(defn auth-token [req]
+  (some-> req :session ::oauth2/access-tokens :github :token))
+
+(defn user-by-email [email]
+  (db/q-entity {:find  '[?e]
+                :where [['?e :user/email email]]}))
+
+(defn user [req]
+  (when-let [token (auth-token req)]
+    (let [email (auth/github-get-user-email token)]
+      (if-let [usr (user-by-email email)]
+        usr
+        (let [usr {:user/email email}]
+          (-> (db/put! [usr] {:blocking? true})
+              meta
+              :entities
+              first))))))
+
+(defn routes [{:as req :keys [uri]}]
+  (let [handler
         (case uri
-          "/" index
+          "/" (if-let [usr (user req)]
+                (index (assoc-in req [:session :user] usr))
+                auth/redirect)
           "/echo" echo-handler
           "/dispatch" (wrap-multi-handler multi-handler)
           ;; todo add 404
           resource-handler)]
-    (handle req)))
+    (if (fn? handler)
+      (handler req)
+      handler)))
+
+(def handler
+  (default-middleware routes))
 
 (defstate server
   :start (http/start-server handler {:port 3400})

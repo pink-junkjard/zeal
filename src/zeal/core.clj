@@ -13,7 +13,7 @@
                          (str/includes? (str/lower-case %) q)) strings))))
 
 (defn search-snippets [q-str]
-  (let [res      (db/q-entity
+  (let [res      (db/q-entities
                   {:find     '[?e ?t]
                    :where    '[[?e :name ?n]
                                [?e :snippet ?s]
@@ -54,13 +54,20 @@
       (catch Exception _
         [nil s]))))
 
+(defn add-author [ent]
+  (->> zeal.state/*session*
+       :user
+       :crux.db/id
+       (assoc ent :author)))
+
 (defn eval-and-log-exec-ent! [{:keys [name snippet] :as exec-ent}]
   (let [exec-ent
         (-> exec-ent
             (merge
              {:time (.getTime (Date.))}
              (when-not name {:name false}))
-            db/add-id-if-none-exists)
+            db/add-id-if-none-exists
+            add-author)
         ret-exec-ent
         (try
           (let [[evald-edn evald-str]
@@ -104,7 +111,7 @@
     (into []
           (comp
            (map first)
-           (map (fn [m]
-                  [:crux.tx/evict m])))
+           (map (fn [eid]
+                  [:crux.tx/evict eid])))
           all)))
  )

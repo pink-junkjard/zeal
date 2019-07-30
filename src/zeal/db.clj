@@ -26,17 +26,21 @@
   {:pre [(map? e)]}
   (cond-> e (nil? id) (assoc :crux.db/id (UUID/randomUUID))))
 
-(def put-tx
-  (map (fn [m]
-         (let [m (add-id-if-none-exists m)]
-           [:crux.tx/put m]))))
+(def add-id-if-none-exists-xf
+  (map add-id-if-none-exists))
+
+(def put-xf
+  (comp
+   add-id-if-none-exists-xf
+   (map (fn [m] [:crux.tx/put m]))))
 
 (defn put!
   ([data] (put! data {:blocking? false}))
   ([data {:keys [blocking?]}]
-   (let [ret (crux/submit-tx
-              node
-              (into [] put-tx data))]
+   (let [entities (into [] add-id-if-none-exists-xf data)
+         ret      (-> node
+                      (crux/submit-tx (into [] put-xf entities))
+                      (with-meta {:entities entities}))]
      (when blocking? (crux/sync node (:crux.tx/tx-time ret) (Duration/ofSeconds 2)))
      ret)))
 
@@ -46,9 +50,14 @@
 (defn entity [eid]
   (crux/entity (crux/db node) eid))
 
-(defn q-entity [q-expr]
+(defn q-entities [q-expr]
   (->> (q q-expr)
        (map (comp entity first))))
+
+(defn q-entity [q-expr]
+  (->> (q q-expr)
+       ffirst
+       entity))
 
 (defn history [eid]
   (crux/history node eid))
