@@ -39,7 +39,7 @@
   {:extra-paths ["dev"]}
   :dev/cljs
   {:extra-deps
-   {thheller/shadow-cljs {:mvn/version "2.8.37"}
+   {thheller/shadow-cljs {:mvn/version "2.8.42"}
     binaryage/devtools   {:mvn/version "0.9.10"}}}}
  :test
  {:extra-paths ["test"]

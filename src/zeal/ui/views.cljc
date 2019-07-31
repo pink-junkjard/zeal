@@ -15,7 +15,8 @@
                        ["codemirror/mode/clojure/clojure"]
                        ["codemirror/addon/edit/closebrackets"]
                        ["codemirror/addon/hint/show-hint.js"]
-                       ["parinfer-codemirror" :as pcm]])))
+                       ["parinfer-codemirror" :as pcm]
+                       ["Clipboard" :as Clipboard]])))
 
 (def app-background "hsla(27, 14%, 97%, 1)")
 
@@ -35,9 +36,10 @@
 ;; eval `help` for info")
 
 (defn cm-set-value [cm s]
-  (let [s (str s)]
-    (when (not= (j/call cm :getValue cm) s)
-      (j/call (j/get cm :doc) :setValue  s))))
+  #?(:cljs
+     (let [s (str s)]
+       (when (not= (j/call cm :getValue cm) s)
+         (j/call (j/get cm :doc) :setValue s)))))
 
 (defn init-parinfer [cm]
   #?(:cljs (pcm/init cm)))
@@ -377,6 +379,33 @@
                                 (this-as this
                                   (j/get-in this [:props :children])))})))
 
+
+(defn update-child-opts [[tag x & more] f & args]
+  (into (if (map? x)
+          [tag (apply f x args)]
+          [tag (apply f {} args) x])
+        more))
+
+(defn copy->clipboard [clipboard-text-cb child]
+  (let [class       (gensym "copy-to-clipboard-")
+        cb-instance (uix/ref)
+        unmount     (fn []
+                      (.destroy @cb-instance))
+        did-mount   (fn []
+                      #?(:cljs
+                         (->> (Clipboard. (str "." class)
+                                          #js {:text clipboard-text-cb})
+                              (reset! cb-instance)))
+                      unmount)
+        _           (uix/effect! did-mount)
+        child       (update-child-opts child update :class conj class)]
+    child))
+
+(defn get-exec-result
+  "Inlining this fn for the clipboard feature causes remounts on every render."
+  []
+  (db-get-in [:exec-ent :result]))
+
 (defn exec-result []
   (let [result         (<sub (comp :result :exec-ent))
         rndr           (<sub (comp :renderer :exec-ent))
@@ -385,22 +414,27 @@
         on-error       (fn [error] (reset! error-state error))
         error-boundary (error-boundary on-error)]
     [:div.w-50-ns.w-100.h-100.ml1.ba.b--light-gray.br2.overflow-hidden.bg-white
-     ; renderer tabs
-     (into [:div.flex {:style {:background app-background}}]
-           (map (fn [r]
-                  [:div.pointer.pv1.ph2.br2.br--top.hover-bg-light-gray
-                   {:class    (when (= rndr r)
-                                "bg-black-10")
-                    :on-click #(t/send [:merge-entity
-                                        {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
-                                         :renderer   r}]
-                                       (fn [m]
-                                         (db-assoc :exec-ent m)
-                                         (reset! error-state nil)))}
-                   (if (nil? r)
-                     "default"
-                     (name r))]))
-           (keys renderers))
+     [:div.flex.justify-between.items-center
+      {:style {:background app-background}}
+      ; renderer tabs
+      (into [:div.flex]
+            (map (fn [r]
+                   [:div.pointer.pv1.ph2.br2.br--top.hover-bg-light-gray
+                    {:class    (when (= rndr r)
+                                 "bg-black-10")
+                     :on-click #(t/send [:merge-entity
+                                         {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
+                                          :renderer   r}]
+                                        (fn [m]
+                                          (db-assoc :exec-ent m)
+                                          (reset! error-state nil)))}
+                    (if (nil? r)
+                      "default"
+                      (name r))]))
+            (keys renderers))
+      [copy->clipboard
+       get-exec-result
+       [:i.far.fa-copy.ph1.gray.hover-black.pointer.f6]]]
 
      (if-let [err (:error @error-state)]
        [:div.pa2.bg-washed-red

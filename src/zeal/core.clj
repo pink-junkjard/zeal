@@ -3,6 +3,7 @@
    [mount.core :as mount :refer [defstate]]
    [clojure.string :as str]
    [zeal.db :as db]
+   [zeal.state]
    [zeal.eval.core :as eval])
   (:import
    (java.util Date)))
