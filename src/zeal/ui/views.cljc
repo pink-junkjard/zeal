@@ -33,8 +33,11 @@
 ;; cmd+return to eval
 ;; ctrl+s to inline snippet results
 ;; eval `help` for info")
+
 (defn cm-set-value [cm s]
-  (.setValue (.-doc cm) (str s)))
+  (let [s (str s)]
+    (when (not= (j/call cm :getValue cm) s)
+      (j/call (j/get cm :doc) :setValue  s))))
 
 (defn init-parinfer [cm]
   #?(:cljs (pcm/init cm)))
