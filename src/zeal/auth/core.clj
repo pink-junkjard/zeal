@@ -5,7 +5,7 @@
             [byte-streams :as bs]
             [aleph.http :as http]
             [ring.util.response :as response]
-            [ring.middleware.oauth2 :refer [wrap-oauth2]]))
+            [ring.middleware.oauth2 :as oauth2 :refer [wrap-oauth2]]))
 
 (def github-root
   "https://api.github.com")
@@ -18,6 +18,9 @@
          ; tzeee github https://developer.github.com/v3/#user-agent-required
          :headers          {:user-agent (config/get :github/app-name)}})
       (update :body #(some-> % bs/to-string (json/parse-string keyword)))))
+
+(defn token [req]
+  (some-> req :session ::oauth2/access-tokens :github :token))
 
 (defn github-get-user-email [token]
   (let [{:keys [status body]}

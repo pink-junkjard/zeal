@@ -1,7 +1,6 @@
 (ns shadow
   (:require [shadow.cljs.devtools.api :as shadow.api]
             [shadow.cljs.devtools.server :as shadow.server]
-            [zeal.core]
             [zeal.serve :refer [server]]
             [mount.core :as mount :refer [defstate]]))
 

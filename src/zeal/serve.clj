@@ -118,34 +118,31 @@
 
 (defmethod multi-handler-response-fn :eval-and-log
   [req handled]
-  (merge
-   (select-keys req [:session])
-   {:status  200
-    :headers {"content-type" "application/transit+json"}
-    :body    (try
-               (transit-encode-json-with-meta handled)
-               (catch Exception e
-                 ;; transit can't handle classes and vars so we fallback to string
-                 (println ::str-fallback e)
-                 (transit-encode-json-with-meta (update handled :result pr-str))))}))
+  {:status  200
+   :headers {"content-type" "application/transit+json"}
+   :body    (try
+              (transit-encode-json-with-meta handled)
+              (catch Exception e
+                ;; transit can't handle classes and vars so we fallback to string
+                (println ::str-fallback e)
+                (transit-encode-json-with-meta (update handled :result pr-str))))})
 
 (defmethod multi-handler-response-fn :default
   [req handled]
-  (merge
-   (select-keys req [:session])
-   {:status  200
-    :headers {"content-type" "application/transit+json"}
-    :body    (transit-encode handled
-                             :json
-                             {:transform transit/write-meta})}))
-(declare auth-token)
+  {:status  200
+   :headers {"content-type" "application/transit+json"}
+   :body    (transit-encode handled
+                            :json
+                            {:transform transit/write-meta})})
+
 (defn- wrap-multi-handler
   ([handler] (fn [req] (wrap-multi-handler handler req)))
   ([handler req]
    (binding [st/*session* (:session req)]
      (let [body    (parse-transit (:body req) :json)
            handled (handler body)]
-       (multi-handler-response-fn body handled)))))
+       (merge (select-keys req [:session])
+              (multi-handler-response-fn body handled))))))
 
 (defmulti multi-handler first)
 
@@ -193,23 +190,20 @@
                              :content-type-options :nosniff
                              })))))
 
-(defn auth-token [req]
-  (some-> req :session ::oauth2/access-tokens :github :token))
-
 (defn user-by-email [email]
-  (db/q-entity {:find  '[?e]
-                :where [['?e :user/email email]]}))
+  (db/q-entity [['?e :user/email email]]))
 
 (defn user [req]
-  (when-let [token (auth-token req)]
-    (let [email (auth/github-get-user-email token)]
-      (if-let [usr (user-by-email email)]
-        usr
-        (let [usr {:user/email email}]
-          (-> (db/put! [usr] {:blocking? true})
-              meta
-              :entities
-              first))))))
+  (or (-> req :session :user not-empty)
+      (when-let [token (auth/token req)]
+        (let [email (auth/github-get-user-email token)]
+          (if-let [usr (user-by-email email)]
+            usr
+            (let [usr {:user/email email}]
+              (-> (db/put! [usr] {:blocking? true})
+                  meta
+                  :entities
+                  first)))))))
 
 (defn routes [{:as req :keys [uri]}]
   (let [handler

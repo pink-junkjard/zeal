@@ -30,7 +30,6 @@
 
 ;;; eval
 
-
 (defn recent-exec-ents [{:keys [n]}]
   (->> (db/q {:find     '[?e ?t]
               :where    '[[?e :snippet]
@@ -91,16 +90,6 @@
              {:result (pr-str e)})))]
     (db/put! [ret-exec-ent] {:blocking? true})
     ret-exec-ent))
-
-(comment
- (do
-   (swap! eval-log empty)
-   (doseq [test-k [:foo :bar :baz :bandoles :chicken]]
-     (eval-and-log!
-      `(zipmap (range 2) (repeat ~test-k)))))
- )
-
-;(search "zipmap" @eval-log [:snippet :result])
 
 (comment
  ;; DANGER WIPE DB

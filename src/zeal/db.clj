@@ -54,10 +54,17 @@
   (->> (q q-expr)
        (map (comp entity first))))
 
-(defn q-entity [q-expr]
-  (->> (q q-expr)
-       ffirst
-       entity))
+(defn q-entity
+  "Take a query-expr as a map or :where clause as a vector.
+  In :where clause case, assumes '?e to refer to entity."
+  [q-expr]
+  (let [q-expr (if (vector? q-expr)
+                 {:find  '[?e]
+                  :where q-expr}
+                 q-expr)]
+    (->> (q q-expr)
+         ffirst
+         entity)))
 
 (defn history [eid]
   (crux/history node eid))
