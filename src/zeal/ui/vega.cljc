@@ -10,7 +10,7 @@
 
 (defn init-vega-js
   [{:as   opts
-    :keys [signals data-url on-view-did-run renderer js-spec]
+    :keys [signals data-url on-view on-view-did-run renderer js-spec]
     :or   {renderer :svg}}]
   #?(:cljs
      (fn [node]
@@ -21,6 +21,7 @@
                       (.initialize node)
                       (.hover)
                       (.run))]
+           (when on-view (on-view view))
            (doseq [[n cb] signals]
              (.addSignalListener view (name n) (fn [_ datum] (cb datum))))
            (when on-view-did-run

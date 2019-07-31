@@ -4,6 +4,7 @@
             [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in db-get db-get-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
+            [kitchen-async.promise :as p]
             [zeal.ui.talk :as t]
             [zeal.eval.util :as eval.util]
             [zeal.ui.vega :as vega]
@@ -15,8 +16,7 @@
                        ["codemirror/mode/clojure/clojure"]
                        ["codemirror/addon/edit/closebrackets"]
                        ["codemirror/addon/hint/show-hint.js"]
-                       ["parinfer-codemirror" :as pcm]
-                       ["Clipboard" :as Clipboard]])))
+                       ["parinfer-codemirror" :as pcm]])))
 
 (def app-background "hsla(27, 14%, 97%, 1)")
 
@@ -352,7 +352,7 @@
           (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]]))
 
 (def renderers
-  {nil        (fn [result]
+  {:default   (fn [result]
                 [codemirror
                  {:default-value (str result)
                   :st-value-fn   #(or
@@ -367,7 +367,12 @@
    :vega-lite (fn [result]
                 [:div {:ref (fn [node]
                               (when node
-                                (vega/init-vega-lite node {:spec result})))}])})
+                                (vega/init-vega-lite
+                                 node
+                                 {:spec     result
+                                  :renderer :canvas
+                                  :on-view  (fn [vega-view]
+                                              (db-assoc :renderer-vega-view vega-view))})))}])})
 
 (defn error-boundary [on-error]
   #?(:cljs
@@ -386,30 +391,49 @@
           [tag (apply f {} args) x])
         more))
 
-(defn copy->clipboard [clipboard-text-cb child]
-  (let [class       (gensym "copy-to-clipboard-")
-        cb-instance (uix/ref)
-        unmount     (fn []
-                      (.destroy @cb-instance))
-        did-mount   (fn []
-                      #?(:cljs
-                         (->> (Clipboard. (str "." class)
-                                          #js {:text clipboard-text-cb})
-                              (reset! cb-instance)))
-                      unmount)
-        _           (uix/effect! did-mount)
-        child       (update-child-opts child update :class conj class)]
-    child))
+(defn copy->clipboard
+  ([clipboard-text-cb child] (copy->clipboard clipboard-text-cb child child))
+  ([clipboard-text-cb child on-copied-child]
+   (let [copied? (uix/state false)
+         ta      (uix/ref)
+         child   (update-child-opts
+                  child assoc :on-click
+                  (fn [_]
+                    #?(:cljs
+                       (p/then
+                        (clipboard-text-cb)
+                        (fn [txt]
+                          (reset! copied? true)
+                          (js/setTimeout #(reset! copied? false) 1000)
+                          (as-> @ta node
+                                (j/assoc! node :value txt)
+                                (j/call node :select)
+                                (j/call js/document :execCommand "copy")
+                                (j/assoc! node :value "")))))))]
+     [:<>
+      [:textarea {:style {:position :absolute
+                          :left     -10000}
+                  :ref   #(reset! ta %)}]
+      (if-not @copied?
+        child
+        on-copied-child)])))
 
-(defn get-exec-result
+(defn exec-result->clipboard-text
   "Inlining this fn for the clipboard feature causes remounts on every render."
   []
-  (db-get-in [:exec-ent :result]))
+  #?(:cljs
+     (let [renderer (db-get-in [:exec-ent :renderer])]
+       (case renderer
+         :vega-lite
+         (let [vega-view (db-get :renderer-vega-view)]
+           ; returns a promise
+           (j/call vega-view :toSVG))
+         (db-get-in [:exec-ent :result])))))
 
 (defn exec-result []
   (let [result         (<sub (comp :result :exec-ent))
         rndr           (<sub (comp :renderer :exec-ent))
-        renderer       (get renderers rndr (get renderers nil))
+        renderer       (get renderers rndr (get renderers :default))
         error-state    (uix/state nil)
         on-error       (fn [error] (reset! error-state error))
         error-boundary (error-boundary on-error)]
@@ -428,13 +452,12 @@
                                         (fn [m]
                                           (db-assoc :exec-ent m)
                                           (reset! error-state nil)))}
-                    (if (nil? r)
-                      "default"
-                      (name r))]))
+                    (name r)]))
             (keys renderers))
       [copy->clipboard
-       get-exec-result
-       [:i.far.fa-copy.ph1.gray.hover-black.pointer.f6]]]
+       exec-result->clipboard-text
+       [:i.far.fa-copy.ph1.gray.hover-black.pointer.f6]
+       [:i.fas.fa-check.f6.ph1]]]
 
      (if-let [err (:error @error-state)]
        [:div.pa2.bg-washed-red
