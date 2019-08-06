@@ -6,20 +6,23 @@
  :dev-http {3500 {:root    "resources/public"
                   :handler zeal.serve/dev-handler}}
 
- :builds   {:app
-            {:target     :browser
-             :output-dir "resources/public/js/compiled"
-             :asset-path "/js/compiled"
+ :builds   {:os  {:target    :node-script
+                  :output-to "resources/public/electron.js"
+                  :main      zeal.os.core/main}
 
-             :modules    {:main {:entries [zeal.ui.core]}}
+            :app {:target     :browser
+                  :output-dir "resources/public/js/compiled"
+                  :asset-path "/js/compiled"
 
-             :devtools
-             ;; before live-reloading any code call this function
-                         {:before-load zeal.ui.core/stop
-                          ;; after live-reloading finishes call this function
-                          :after-load  zeal.ui.core/start
-                          ;; serve the public directory over http at port 8700
-                          ;:http-root   "public"
-                          ;:http-port   8700
-                          :preloads    [devtools.preload]}
-             }}}
+                  :modules    {:main {:entries [zeal.ui.core]}}
+
+                  :devtools
+                  ;; before live-reloading any code call this function
+                              {:before-load zeal.ui.core/stop
+                               ;; after live-reloading finishes call this function
+                               :after-load  zeal.ui.core/start
+                               ;; serve the public directory over http at port 8700
+                               ;:http-root   "public"
+                               ;:http-port   8700
+                               :preloads    [devtools.preload]}
+                  }}}

@@ -4,13 +4,15 @@
     "watch": "shadow-cljs -A:dev/cljs watch app;",
     "release": "shadow-cljs release app;",
     "server": "shadow-cljs server;",
-    "clean": "rm -rf target; rm -rf public/js/compiled"
+    "clean": "rm -rf target; rm -rf public/js/compiled",
+    "open-in-electron": "electron resources/public/electron.js"
   },
   "devDependencies": {
     "shadow-cljs": "^2.8.37"
   },
   "dependencies": {
     "codemirror": "^5.47.0",
+    "electron": "^6.0.0",
     "parinfer-codemirror": "^1.4.2",
     "react": "^16.8.6",
     "react-dom": "^16.8.6",

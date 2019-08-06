@@ -56,6 +56,12 @@
               {:src "js/compiled/main.js"}
               {:script "zeal.ui.core.init()"}]}]])
 
+(comment
+ (spit
+  "resources/public/index.html"
+  (uix.dom/render-to-string [html])
+  ))
+
 (defn init-state [{:as req :keys [session]}]
   {:user (select-keys
           (:user session)
@@ -208,7 +214,7 @@
 (defn routes [{:as req :keys [uri]}]
   (let [handler
         (case uri
-          "/" (if-let [usr (user req)]
+          "/" (if-let [usr #_(user req) {:user/email "kalavox@gmail.com"}]
                 (index (assoc-in req [:session :user] usr))
                 auth/redirect)
           "/echo" echo-handler
