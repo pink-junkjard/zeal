@@ -4,8 +4,9 @@
             [zeal.ui.views :as views]))
 
 (defn start []
-  ;(mixed-media/render-example)
-  (uix.dom/hydrate [views/app] js/root))
+  (uix.dom/hydrate
+   [views/app]
+   (.getElementById js/document "root")))
 
 (defn ^:export init []
   ;; init is called ONCE when the page loads
