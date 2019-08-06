@@ -391,8 +391,8 @@
           [tag (apply f {} args) x])
         more))
 
-(defn copy->clipboard
-  ([clipboard-text-cb child] (copy->clipboard clipboard-text-cb child child))
+(defn ->clipboard
+  ([clipboard-text-cb child] (->clipboard clipboard-text-cb child child))
   ([clipboard-text-cb child on-copied-child]
    (let [copied? (uix/state false)
          ta      (uix/ref)
@@ -454,7 +454,7 @@
                                           (reset! error-state nil)))}
                     (name r)]))
             (keys renderers))
-      [copy->clipboard
+      [->clipboard
        exec-result->clipboard-text
        [:i.far.fa-copy.ph1.gray.hover-black.pointer.f6]
        [:i.fas.fa-check.f6.ph1]]]
@@ -468,7 +468,8 @@
 (defn logo []
   [:span.f2.pl3
    {:style {:font-family "'Faster One', cursive"}}
-   "Z"])
+   [:a.link.black {:href "/"}
+    "Z"]])
 
 (defn app []
   [:main.app.h-100.flex.flex-column.overflow-hidden
