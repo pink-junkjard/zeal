@@ -437,7 +437,7 @@
         error-state    (uix/state nil)
         on-error       (fn [error] (reset! error-state error))
         error-boundary (error-boundary on-error)]
-    [:div.w-50-ns.w-100.h-100.ml1.ba.b--light-gray.br2.overflow-hidden.bg-white
+    [:div.w-50-ns.w-100.h-100.ml1.ba.b--light-gray.br2.overflow-scroll.bg-white
      [:div.flex.justify-between.items-center
       {:style {:background app-background}}
       ; renderer tabs
