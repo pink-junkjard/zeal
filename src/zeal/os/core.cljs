@@ -1,5 +1,6 @@
 (ns zeal.os.core
-  (:require ["electron" :refer [app BrowserWindow crashReporter globalShortcut]]))
+  (:require ["electron" :refer [app BrowserWindow crashReporter globalShortcut]]
+            ["electron-is-dev" :as dev?]))
 
 ;; using Electron for the OS
 ;; Todo move this into it's own sibling library
@@ -15,11 +16,11 @@
 
 (defn init-browser []
   (let [win (BrowserWindow.
-             (clj->js {:width          1200
+             (clj->js {:width          (if dev? 1200 900)
                        :height         600
                        :frame          false
                        :webPreferences {;:nodeIntegration true
-                                        :devTools true}}
+                                        :devTools dev?}}
                       ))]
     (doto win
 
@@ -51,9 +52,6 @@
                     (.focus)))))]
     (.register globalShortcut "Option+Space" toggle-app)
     (.register globalShortcut "Option+Z" toggle-app))
-
-  (letfn [(quit-app [] (.quit app))]
-    (.register globalShortcut "CommandOrControl+Q" quit-app))
 
   )
 

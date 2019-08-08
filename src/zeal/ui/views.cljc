@@ -172,7 +172,7 @@
               :let [name-id-or-hash (or name (subs (str (if show-history?
                                                           content-hash
                                                           id)) 0 7))]]
-          [:div.flex.pv2.hover-bg-light-gray.pointer.ph1.hide-child.code
+          [:div.flex.mv2.hover-bg-light-gray.pointer.ph1.hide-child.code
            {:key      (str name "-" id "-" tx-id)
             :style    {:max-height "3rem"}
             :on-click #(do (st/db-assoc :exec-ent exec-ent)
@@ -437,7 +437,7 @@
         error-state    (uix/state nil)
         on-error       (fn [error] (reset! error-state error))
         error-boundary (error-boundary on-error)]
-    [:div.w-50-ns.w-100.h-100.ml1.ba.b--light-gray.br2.overflow-scroll.bg-white
+    [:div.w-50-ns.w-100.h-100.ml1.ba.b--light-gray.br2.bg-white
      [:div.flex.justify-between.items-center
       {:style {:background app-background}}
       ; renderer tabs
@@ -459,11 +459,12 @@
        [:i.far.fa-copy.ph1.gray.hover-black.pointer.f6]
        [:i.fas.fa-check.f6.ph1]]]
 
-     (if-let [err (:error @error-state)]
-       [:div.pa2.bg-washed-red
-        (str "Error using renderer " rndr)
-        [:pre.break-all.prewrap (str err)]]
-       #?(:cljs [:> error-boundary [renderer result]]))]))
+     [:div.overflow-scroll
+      (if-let [err (:error @error-state)]
+        [:div.pa2.bg-washed-red
+         (str "Error using renderer " rndr)
+         [:pre.break-all.prewrap (str err)]]
+        #?(:cljs [:> error-boundary [renderer result]]))]]))
 
 (defn logo []
   [:span.f2.pl3
