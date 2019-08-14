@@ -1,6 +1,8 @@
 (ns zeal.eval.sandbox
   "Stub ns for eval'ing code. See zeal.eval.core."
-  (:require [clojure.tools.deps.alpha.repl :refer [add-lib]]))
+  (:require [zeal.db]
+            [zeal.eval.util]
+            [zeal.eval.util.deps :refer [add-lib]]))
 
 (def help
   "Dynamic Deps

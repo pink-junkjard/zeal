@@ -38,7 +38,7 @@
 (defn cm-set-value [cm s]
   #?(:cljs
      (let [s (str s)]
-       (when (not= (j/call cm :getValue cm) s)
+       (when (not= (j/call cm :getValue) s)
          (j/call (j/get cm :doc) :setValue s)))))
 
 (defn init-parinfer [cm]
@@ -432,8 +432,8 @@
 
 (defn exec-result []
   (let [result         (<sub (comp :result :exec-ent))
-        rndr           (<sub (comp :renderer :exec-ent))
-        renderer       (get renderers rndr (get renderers :default))
+        rndr           (or (<sub (comp :renderer :exec-ent)) :default)
+        renderer       (get renderers rndr)
         error-state    (uix/state nil)
         on-error       (fn [error] (reset! error-state error))
         error-boundary (error-boundary on-error)]
