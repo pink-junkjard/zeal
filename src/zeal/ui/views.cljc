@@ -459,7 +459,7 @@
        [:i.far.fa-copy.ph1.gray.hover-black.pointer.f6]
        [:i.fas.fa-check.f6.ph1]]]
 
-     [:div.overflow-scroll
+     [:div.overflow-scroll.h-100
       (if-let [err (:error @error-state)]
         [:div.pa2.bg-washed-red
          (str "Error using renderer " rndr)
