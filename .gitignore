@@ -18,3 +18,4 @@ yarn.lock
 .shadow-cljs
 resources/public/js
 config.edn
+zeal-darwin-x64

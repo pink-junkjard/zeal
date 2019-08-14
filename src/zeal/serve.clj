@@ -12,7 +12,7 @@
             [ring.middleware.not-modified :refer [wrap-not-modified]]
             [zeal.ui.views :as views]
             [zeal.ui.state :as ui-state]
-            [zeal.core :as zc]
+            [zeal.snippet :as zs]
             [zeal.db :as db]
             [zeal.state :as st]
             [zeal.auth.core :as auth]
@@ -93,7 +93,7 @@
        (fn [socket]
          (s/consume
           (fn [msg]
-            (let [search-res (zc/search-eval-log msg)]
+            (let [search-res (zs/search-eval-log msg)]
               (s/put! socket
                       (transit-encode search-res :json))))
           socket)
@@ -154,15 +154,15 @@
 
 (defmethod multi-handler :eval-and-log
   [[_ exec-ent]]
-  (zc/eval-and-log-exec-ent! exec-ent))
+  (zs/eval-and-log-exec-ent! exec-ent))
 
 (defmethod multi-handler :search
   [[_ {:keys [q]}]]
-  (zc/search-eval-log q))
+  (zs/search-eval-log q))
 
 (defmethod multi-handler :recent-exec-ents
   [[_ opts]]
-  (zc/recent-exec-ents opts))
+  (zs/recent-exec-ents opts))
 
 (defmethod multi-handler :history
   [[_ {id :crux.db/id}]]
@@ -232,8 +232,8 @@
   :start (http/start-server handler {:port 3400})
   :stop (.close server))
 
-(comment
- (mount/stop)
- (mount/start)
- )
+(defn -main []
+  (println "Starting zealously...")
+  (mount/start)
+  (print "Zeal is ready."))
 
