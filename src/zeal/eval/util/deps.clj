@@ -5,21 +5,23 @@
             [clojure.tools.deps.alpha.repl :as deps.repl]
             [clojure.tools.deps.alpha.libmap :as lm]))
 
+; similar to clojure.tools.deps.repl but adding the url to every
+; dynamic classloader
+; this is considered a temporary measure until add-lib lands in tools.deps
+; proper
+
 ; from https://github.com/lambdaisland/kaocha/blob/master/src/kaocha/classpath.clj
 
-(defn ensure-compiler-loader
-  "Ensures the clojure.lang.Compiler/LOADER var is bound to a DynamicClassLoader,
-  so that we can add to Clojure's classpath dynamically."
-  []
-  (when-not (bound? Compiler/LOADER)
-    (.bindRoot Compiler/LOADER (clojure.lang.DynamicClassLoader. (clojure.lang.RT/baseLoader)))))
+(def cl
+  (let [cl (.getContextClassLoader (Thread/currentThread))]
+    (.setContextClassLoader (Thread/currentThread) (clojure.lang.DynamicClassLoader. cl))
+    cl))
 
 (defn- classloader-hierarchy
   "Returns a seq of classloaders, with the tip of the hierarchy first.
    Uses the current thread context ClassLoader as the tip ClassLoader
    if one is not provided."
   ([]
-   (ensure-compiler-loader)
    (classloader-hierarchy (deref clojure.lang.Compiler/LOADER)))
   ([tip]
    (->> tip
@@ -49,16 +51,11 @@
        (throw (IllegalStateException. (str "Could not find a suitable classloader to modify from "
                                            classloaders)))))))
 
-(def cl
-  (let [cl (.getContextClassLoader (Thread/currentThread))]
-    (.setContextClassLoader (Thread/currentThread) (clojure.lang.DynamicClassLoader. cl))
-    cl))
-
 (defn- add-paths []
   (doseq [p (mapcat :paths (vals (lm/lib-map)))]
     (add-classpath p)))
 
 (defn add-lib [lib coord]
-  (let [ret (deps.repl/add-lib lib coord)]
-    (when ret (add-paths))
-    ret))
+  (let [added? (deps.repl/add-lib lib coord)]
+    (when added? (add-paths))
+    added?))

@@ -1,7 +1,29 @@
 (ns zeal.os.core
   (:require ["electron" :refer [app BrowserWindow crashReporter globalShortcut]]
-            ["electron-is-dev" :as dev?]))
+            ["electron-is-dev" :as dev?]
+            ["child_process" :as child-process]))
 
+(defn start-backend
+  ([] (start-backend {}))
+  ([{:keys [on-stdout on-stderr on-close]
+     :or   {on-stdout (partial js/console.log "stdout")
+            on-stderr (partial js/console.log "stderr")
+            on-close  (partial js/console.log "clj-process exited with code:")}}]
+   (js/console.log "Starting Backend Process")
+   (js/console.log "resources"
+                   (.-resourcesPath js/process))
+   (let [clj-process
+         (child-process/spawn
+          "java"
+          #js["-cp" "zeal.jar" "clojure.main" "-m" "zeal.serve"]
+          #js{:cwd (.-resourcesPath js/process)}
+          )]
+     (doto clj-process
+       (-> .-stdout (.on "data" (fn [d] (on-stdout (.toString d)))))
+       (-> .-stderr (.on "data" (fn [d] (on-stderr (.toString d)))))
+       (.on "close" (fn [d] (on-close (.toString d))))))))
+
+;; https://nodejs.org/api/child_process.html#child_process_child_process_exec_command_options_callback
 ;; using Electron for the OS
 ;; Todo move this into it's own sibling library
 ;; and require web from deps
@@ -67,14 +89,19 @@
     (.quit app)))
 
 (defn main []
-  ; CrashReporter can just be omitted
-  (.start crashReporter
-          (clj->js
-           {:companyName "MyAwesomeCompany"
-            :productName "MyAwesomeApp"
-            :submitURL   "https://example.com/submit-url"
-            :autoSubmit  false}))
-
   (.on app "will-quit" on-will-quit)
   (.on app "window-all-closed" on-window-all-closed)
-  (.on app "ready" on-ready))
+  (start-backend
+   {:on-stdout
+    (fn [s]
+      (when (= s "Zeal is ready.")
+        ; CrashReporter can just be omitted
+        (.start crashReporter
+                (clj->js
+                 {:companyName "MyAwesomeCompany"
+                  :productName "MyAwesomeApp"
+                  :submitURL   "https://example.com/submit-url"
+                  :autoSubmit  false}))
+
+        (on-ready)
+        #_(.on app "ready" on-ready)))}))

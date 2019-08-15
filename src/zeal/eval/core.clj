@@ -1,8 +1,8 @@
-(ns zeal.eval.core)
+(ns zeal.eval.core
+  (:require [zeal.eval.sandbox]))
 
 (def set-ns
   (pr-str
-   '(load-file "src/zeal/eval/sandbox.clj")
    '(in-ns 'zeal.eval.sandbox)))
 
 (defn do-eval-string [s]
