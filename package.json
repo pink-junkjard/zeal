@@ -12,7 +12,7 @@
     "open-in-electron": "electron resources/public/electron.js",
     "package-backend": "clj -A:depstar -m hf.depstar.uberjar zeal.jar",
     "run-packaged-backend": "java -cp zeal.jar clojure.main -m zeal.serve",
-    "package-os-app": "electron-packager ./ zeal --overwrite --platform=darwin --icon=resources/public/img/zeal-logo.icns --extraResource=zeal.jar --extraResource=config.edn",
+    "package-os-app": "electron-packager ./ zeal --overwrite --platform=darwin --icon=resources/public/img/zeal-logo.icns --extraResource=zeal.jar --extraResource=config.edn --ignore=.idea --ignore=.cpcache --ignore=.shadow-cljs --ignore=zeal.jar --ignore=data --ignore=cljs-runtime",
     "run-packaged-os-app": "zeal-darwin-x64/zeal.app/Contents/MacOS/zeal"
   },
   "devDependencies": {
