@@ -8,6 +8,7 @@
             [zeal.ui.talk :as t]
             [zeal.eval.util :as eval.util]
             [zeal.ui.vega :as vega]
+            [zeal.ui.util.select :as select]
             [zeal.util.react-js :refer [make-component]]
             #?@(:cljs [[den1k.shortcuts :as sc :refer [shortcuts global-shortcuts]]
                        [applied-science.js-interop :as j]
@@ -20,11 +21,14 @@
 
 (def app-background "hsla(27, 14%, 97%, 1)")
 
+(defn focus-search []
+  (when-let [search-node (db-get :search-node)]
+    (.focus search-node)
+    true))
+
 #?(:cljs
    (global-shortcuts
-    {"cmd+/" #(when-let [search-node (db-get :search-node)]
-                (.focus search-node)
-                false)
+    {"cmd+/" #(when (focus-search) false)
      ;"cmd+shift+z" #(js/console.log "redo")
      ;"cmd+z"       #(js/console.log "undo")
      }))
@@ -113,18 +117,53 @@
                                       :name    false}))}
    "NEW"])
 
+(defn on-search-result-select [{:as exec-ent :keys [snippet]}]
+  (st/db-update :pre-select-exec-ent #(or % (db-get :exec-ent)))
+  (st/db-assoc :exec-ent exec-ent)
+  ;; setting directly instead of syncing editor with st-value-fn
+  ;; because when the editor value is reset on every change
+  ;; the caret moves to index 0
+  (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+  (focus-search))
+
+(defn on-search-result-pick [exec-ent]
+  (on-search-result-select exec-ent)
+  (st/db-assoc :pre-select-exec-ent nil))
+
+(defn on-search-results-unselect []
+  (when-let [exec-ent (st/db-get :pre-select-exec-ent)]
+    (on-search-result-select exec-ent)
+    (st/db-assoc :pre-select-exec-ent nil)))
+
+(defonce search-item-select
+  (select/select {:on-item-select on-search-result-select
+                  :on-item-pick   on-search-result-pick
+                  :on-unselect    on-search-results-unselect}))
+
+(defn results? []
+  (boolean
+   (if (db-get :show-history?)
+     (not-empty (db-get :history))
+     (not-empty (db-get :search-results)))))
+
 (defn search-input []
   (let [search-query   (<sub :search-query)
-        search-results (<sub :search-results)]
+        search-results (<sub :search-results)
+        {:keys [on-item-pick]} (search-item-select search-results)]
     [:div.flex
      [:input.outline-0.bn.br2.w5.f6.ph3.pv2.shadow-4.h2
       (merge
        #?(:cljs
-          (shortcuts {"escape" #(db-assoc :search-results nil
-                                          :search-query ""
-                                          :show-history? false
-                                          :history nil
-                                          :history-ent nil)}))
+          (shortcuts {"arrowdown" #(select/next search-item-select)
+                      "arrowup"   #(select/previous search-item-select)
+                      "enter"     #(on-item-pick (select/selected search-item-select))
+                      "escape"    #(do
+                                     (on-search-results-unselect)
+                                     (db-assoc :search-results nil
+                                               :search-query ""
+                                               :show-history? false
+                                               :history nil
+                                               :history-ent nil))}))
        {:style     {:box-shadow    "rgba(0, 0, 0, 0.03) 0px 4px 3px 0px"
                     :padding-right 30}
         :ref       #(db-assoc :search-node %)
@@ -149,6 +188,11 @@
         search-results   (<sub :search-results)
         show-history?    (<sub :show-history?)
         history          (<sub :history)
+        current-exec-ent (<sub (fn [db] (or (:pre-select-exec-ent db)
+                                            (:exec-ent db))))
+        {:keys [item-handlers-fn parent-handlers]} search-item-select
+        _                (<sub (:state search-item-select) identity) ; sub to rerender
+        select-idx       @search-item-select
         results?         (or show-history? (not-empty search-results))
         no-results?      (if show-history?
                            (empty? history)
@@ -162,24 +206,29 @@
      (cond
        results?
        [:div.ph2.mb2
-        (for [{:as           exec-ent
-               :keys         [time name snippet result result-string]
-               :crux.db/keys [id content-hash]
-               :crux.tx/keys [tx-id]}
-              (if show-history?
-                history
-                search-results)
-              :let [name-id-or-hash (or name (subs (str (if show-history?
-                                                          content-hash
-                                                          id)) 0 7))]]
-          [:div.flex.mv2.hover-bg-light-gray.pointer.ph1.hide-child.code
-           {:key      (str name "-" id "-" tx-id)
-            :style    {:max-height "3rem"}
-            :on-click #(do (st/db-assoc :exec-ent exec-ent)
-                           ;; setting directly instead of syncing editor with st-value-fn
-                           ;; because when the editor value is reset on every change
-                           ;; the caret moves to index 0
-                           (cm-set-value (db-get-in [:editor :snippet-cm]) snippet))}
+        parent-handlers
+        (for [[idx {:as           exec-ent
+                    :keys         [time name snippet result result-string]
+                    :crux.db/keys [id content-hash]
+                    :crux.tx/keys [tx-id]}]
+              (map-indexed vector (if show-history?
+                                    history
+                                    search-results))
+              :let [name-id-or-hash   (or name (subs (str (if show-history?
+                                                            content-hash
+                                                            id)) 0 7))
+                    current-exec-ent? (= exec-ent current-exec-ent)
+                    selected?         (= idx select-idx)]]
+          [:div.flex.mv2.pointer.pv1.ph1.hide-child.code
+           (merge
+            (item-handlers-fn exec-ent idx)
+            {:key   (str name "-" id "-" tx-id)
+             :style (merge {:max-height "4rem"}
+                           (when current-exec-ent?
+                             {:outline-color "gray"
+                              :outline-style "dashed"}))
+             :class [(when current-exec-ent? "outline")
+                     (when selected? "bg-black-10")]})
            [:div.w3.items-center.f7.outline-0.self-center.overflow-hidden
             ; to .truncate need to remove on focus and add back on blur
             {:contentEditable
