@@ -123,7 +123,7 @@
   ;; setting directly instead of syncing editor with st-value-fn
   ;; because when the editor value is reset on every change
   ;; the caret moves to index 0
-  (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+  (some-> (db-get-in [:editor :snippet-cm]) (cm-set-value snippet))
   (focus-search))
 
 (defn on-search-result-pick [exec-ent]
@@ -136,9 +136,10 @@
     (st/db-assoc :pre-select-exec-ent nil)))
 
 (defonce search-item-select
-  (select/select {:on-item-select on-search-result-select
-                  :on-item-pick   on-search-result-pick
-                  :on-unselect    on-search-results-unselect}))
+  (select/select {:on-item-select           on-search-result-select
+                  :on-item-pick             on-search-result-pick
+                  :on-unselect              on-search-results-unselect
+                  :relative-container-level 2}))
 
 (defn results? []
   (boolean
@@ -154,8 +155,8 @@
      [:input.outline-0.bn.br2.w5.f6.ph3.pv2.shadow-4.h2
       (merge
        #?(:cljs
-          (shortcuts {"arrowdown" #(select/next search-item-select)
-                      "arrowup"   #(select/previous search-item-select)
+          (shortcuts {"arrowdown" #(do (select/next search-item-select) false)
+                      "arrowup"   #(do (select/previous search-item-select) false)
                       "enter"     #(on-item-pick (select/selected search-item-select))
                       "escape"    #(do
                                      (on-search-results-unselect)
@@ -219,7 +220,7 @@
                                                             id)) 0 7))
                     current-exec-ent? (= exec-ent current-exec-ent)
                     selected?         (= idx select-idx)]]
-          [:div.flex.mv2.pointer.pv1.ph1.hide-child.code
+          [:div.flex.mv1.pointer.pv2.ph1.hide-child.code
            (merge
             (item-handlers-fn exec-ent idx)
             {:key   (str name "-" id "-" tx-id)
@@ -228,7 +229,7 @@
                              {:outline-color "gray"
                               :outline-style "dashed"}))
              :class [(when current-exec-ent? "outline")
-                     (when selected? "bg-black-10")]})
+                     (when selected? "bg-white")]})
            [:div.w3.items-center.f7.outline-0.self-center.overflow-hidden
             ; to .truncate need to remove on focus and add back on blur
             {:contentEditable
@@ -440,32 +441,39 @@
           [tag (apply f {} args) x])
         more))
 
+(defn clipboard-node []
+  [:textarea {:style {:position :absolute
+                      :left     -10000}
+              :ref   #(db-assoc ::clipboard-node %)}])
+
+(defn copy-to-clipboard [clipboard-text-fn on-copied]
+  #?(:cljs
+     (p/then
+      (clipboard-text-fn)
+      (fn [txt]
+        (on-copied)
+        (as-> (db-get ::clipboard-node) node
+              (j/assoc! node :value txt)
+              (j/call node :select)
+              (j/call js/document :execCommand "copy")
+              (j/assoc! node :value ""))))))
+
 (defn ->clipboard
-  ([clipboard-text-cb child] (->clipboard clipboard-text-cb child child))
-  ([clipboard-text-cb child on-copied-child]
+  ([clipboard-text-fn child] (->clipboard clipboard-text-fn child child))
+  ([clipboard-text-fn child on-copied-child]
    (let [copied? (uix/state false)
-         ta      (uix/ref)
          child   (update-child-opts
                   child assoc :on-click
                   (fn [_]
                     #?(:cljs
-                       (p/then
-                        (clipboard-text-cb)
-                        (fn [txt]
-                          (reset! copied? true)
-                          (js/setTimeout #(reset! copied? false) 1000)
-                          (as-> @ta node
-                                (j/assoc! node :value txt)
-                                (j/call node :select)
-                                (j/call js/document :execCommand "copy")
-                                (j/assoc! node :value "")))))))]
-     [:<>
-      [:textarea {:style {:position :absolute
-                          :left     -10000}
-                  :ref   #(reset! ta %)}]
-      (if-not @copied?
-        child
-        on-copied-child)])))
+                     (copy-to-clipboard
+                      clipboard-text-fn
+                      (fn []
+                        (reset! copied? true)
+                        (js/setTimeout #(reset! copied? false) 1000))))))]
+     (if-not @copied?
+       child
+       on-copied-child))))
 
 (defn exec-result->clipboard-text
   "Inlining this fn for the clipboard feature causes remounts on every render."
@@ -524,6 +532,7 @@
 (defn app []
   [:main.app.h-100.flex.flex-column.overflow-hidden
    {:style {:background app-background}}
+   [clipboard-node]
    [:div
     [:div.flex.justify-between.items-center.pv2.ph3
      [:div.w3

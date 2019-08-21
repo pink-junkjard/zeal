@@ -43,7 +43,8 @@
                         (swap! state assoc
                                :items (vec items)
                                :idx 0
-                               :override-idx nil))
+                               :override-idx nil)
+                        (some-> items first on-item-select))
                       this)])
 
   ISelect
@@ -81,7 +82,8 @@
 
 (def handler-ks [:on-item-select :on-item-pick :on-unselect])
 
-(defn add-handlers [select {:as opts :keys [on-item-pick on-item-select on-unselect]}]
+(defn add-handlers
+  [select {:as opts :keys [on-item-pick on-unselect relative-container-level]}]
   (merge
    (select-keys opts handler-ks)
    {:parent-handlers
@@ -93,9 +95,12 @@
     (fn [item idx]
       {:ref            (fn [node] (when (and node (= idx @select))
                                     (when-not
-                                     (uvis/visible? node {:parent-level 2})
+                                     (uvis/visible? node {:parent-level relative-container-level})
                                       #?(:cljs
-                                         (j/call node :scrollIntoView false)))))
+                                         (j/call node
+                                                 :scrollIntoView
+                                                 #js {:block  "nearest"
+                                                      :inline "nearest"})))))
        :on-mouse-enter (fn [_]
                          (set-override-idx-from-item select item))
        :on-mouse-down  (fn [e]
