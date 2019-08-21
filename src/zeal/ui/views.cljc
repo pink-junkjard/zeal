@@ -4,6 +4,8 @@
             [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in db-get db-get-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
+            [clojure.string :as str]
+            [clojure.set :as set]
             [kitchen-async.promise :as p]
             [zeal.ui.talk :as t]
             [zeal.eval.util :as eval.util]
@@ -38,6 +40,12 @@
 ;; cmd+return to eval
 ;; ctrl+s to inline snippet results
 ;; eval `help` for info")
+
+(defn update-child-opts [[tag x & more] f & args]
+  (into (if (map? x)
+          [tag (apply f x args)]
+          [tag (apply f {} args) x])
+        more))
 
 (defn cm-set-value [cm s]
   #?(:cljs
@@ -96,8 +104,46 @@
      (when-not @cm-init?
        [:pre.f6.ma0.break-all.prewrap default-value])]))
 
+(defn clipboard-node []
+  "This component must be rendered in the app tree for clipboard functionality
+  to work."
+  [:textarea {:style {:position :absolute
+                      :left     -10000}
+              :ref   #(db-assoc ::clipboard-node %)}])
+
+(defn copy-to-clipboard
+  ([clipboard-text-fn] (copy-to-clipboard clipboard-text-fn (constantly nil)))
+  ([clipboard-text-fn on-copied]
+   #?(:cljs
+      (p/then
+       (clipboard-text-fn)
+       (fn [txt]
+         (as-> (db-get ::clipboard-node) node
+               (j/assoc! node :value txt)
+               (j/call node :select)
+               (j/call js/document :execCommand "copy")
+               (j/assoc! node :value ""))
+         (on-copied))))))
+
+(defn ->clipboard
+  ([clipboard-text-fn child] (->clipboard clipboard-text-fn child child))
+  ([clipboard-text-fn child on-copied-child]
+   (let [copied? (uix/state false)
+         child   (update-child-opts
+                  child assoc :on-click
+                  (fn [_]
+                    #?(:cljs
+                       (copy-to-clipboard
+                        clipboard-text-fn
+                        (fn []
+                          (reset! copied? true)
+                          (js/setTimeout #(reset! copied? false) 1000))))))]
+     (if-not @copied?
+       child
+       on-copied-child))))
+
 (defn show-recent-results []
-  (when (and (empty? (db-get :search-query)) (not (db-get :show-history?)))
+  (when (and (empty? (db-get :full-command)) (not (db-get :show-history?)))
     (t/send [:recent-exec-ents {:n 10}]
             #(db-assoc :search-results %))
     true))
@@ -108,7 +154,7 @@
     :on-click #(do
                  (cm-set-value (db-get-in [:editor :snippet-cm]) new-snippet-text)
 
-                 (db-assoc :search-query ""
+                 (db-assoc :full-command ""
                            :search-results nil
                            :show-history? false
                            :history nil
@@ -135,7 +181,7 @@
     (on-search-result-select exec-ent)
     (st/db-assoc :pre-select-exec-ent nil)))
 
-(defonce search-item-select
+(def search-item-select
   (select/select {:on-item-select           on-search-result-select
                   :on-item-pick             on-search-result-pick
                   :on-unselect              on-search-results-unselect
@@ -147,8 +193,64 @@
      (not-empty (db-get :history))
      (not-empty (db-get :search-results)))))
 
-(defn search-input []
-  (let [search-query   (<sub :search-query)
+(def commands #{"-cb" ">" ">cb"})
+
+(def commands-regex
+  "Matches commands and surrounding whitespace."
+  (re-pattern (str "\\s?(" (str/join "|" commands) ")+\\s*")))
+
+(defn sans-commands [s]
+  (not-empty (str/replace s commands-regex "")))
+
+(defn parse-command-input [s]
+  (let [words    (into #{} (str/split s #" "))
+        commands (not-empty (set/intersection commands words))]
+    {:commands commands
+     :query    (sans-commands s)}))
+
+(defn exec-ent->clipboard-text
+  ([] (exec-ent->clipboard-text (db-get :exec-ent)))
+  ([{:as exec-ent :keys [result renderer]}]
+   #?(:cljs
+      (case renderer
+        :vega-lite
+        (let [vega-view (db-get :renderer-vega-view)]
+          ; returns a promise
+          (j/call vega-view :toSVG))
+        result))))
+
+(defn exec-exec-ent
+  ([] (exec-exec-ent (constantly nil)))
+  ([on-result] (exec-exec-ent (db-get :exec-ent) on-result))
+  ([exec-ent on-result]
+   (t/send-eval!
+    (-> exec-ent
+        (update :snippet gstr/trim))
+    (fn [{:as m :keys [snippet]}]
+      (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+      (db-assoc :exec-ent m)
+      (on-result exec-ent)
+      ;; TODO it's time for a normalized db!
+      (if (db-get :show-history?)
+        (t/history m #(db-assoc :history %))
+        (t/send-search (db-get :search-query)
+                       #(db-assoc :search-results %)))))))
+
+(defn execute-commands [exec-ent commands]
+  (doseq [cmd commands]
+    (case cmd
+      "-cb" (copy-to-clipboard
+             #(exec-ent->clipboard-text exec-ent)
+             focus-search)
+      ">cb" (exec-exec-ent
+             (fn [new-exec-ent]
+               (copy-to-clipboard
+                #(exec-ent->clipboard-text new-exec-ent)
+                focus-search)))
+      ">" (exec-exec-ent))))
+
+(defn command-input []
+  (let [full-command   (<sub :full-command)
         search-results (<sub :search-results)
         {:keys [on-item-pick]} (search-item-select search-results)]
     [:div.flex
@@ -157,31 +259,39 @@
        #?(:cljs
           (shortcuts {"arrowdown" #(do (select/next search-item-select) false)
                       "arrowup"   #(do (select/previous search-item-select) false)
-                      "enter"     #(on-item-pick (select/selected search-item-select))
+                      "enter"     (fn [e]
+                                    (let [full-query (.. e -target -value)
+                                          {:keys [commands]} (parse-command-input full-query)
+                                          exec-ent   (select/selected search-item-select)]
+                                      (on-item-pick exec-ent)
+                                      (execute-commands exec-ent commands)))
                       "escape"    #(do
                                      (on-search-results-unselect)
                                      (db-assoc :search-results nil
-                                               :search-query ""
+                                               :full-command ""
                                                :show-history? false
                                                :history nil
                                                :history-ent nil))}))
        {:style     {:box-shadow    "rgba(0, 0, 0, 0.03) 0px 4px 3px 0px"
                     :padding-right 30}
         :ref       #(db-assoc :search-node %)
-        :value     search-query
+        :value     full-command
         :on-focus  #(show-recent-results)
         :on-change (fn [e]
-                     (let [q (.. e -target -value)]
-                       (db-assoc :search-query q)
+                     (let [full-query (.. e -target -value)
+                           {:keys [query]} (parse-command-input full-query)]
+                       (db-assoc :full-command full-query)
+                       (db-assoc :search-query query)
                        (or (show-recent-results)
                            (if (db-get :show-history?)
                              (t/history (db-get :history-ent) #(db-assoc :history %))
-                             (t/send-search q #(db-assoc :search-results %))))))})]
-     (when (or (not-empty search-query) (not-empty search-results))
+                             (t/send-search query #(db-assoc :search-results %))))))})]
+     (when (or (not-empty full-command) (not-empty search-results))
        [:span.flex.items-center
         {:style {:margin-left -27}}
         [:i.fas.fa-times-circle.mh1.gray.hover-black
          {:on-click #(st/db-assoc :search-results nil
+                                  :full-command ""
                                   :search-query "")}]])]))
 
 (defn search-results []
@@ -373,7 +483,7 @@
          (fn [_cm]
            #?(:cljs
               (do
-                (db-assoc :search-query ""
+                (db-assoc :full-command ""
                           :search-results nil
                           :show-history? false
                           :history nil
@@ -386,7 +496,7 @@
                    (db-assoc :exec-ent m)
                    (if (db-get :show-history?)
                      (t/history m #(db-assoc :history %))
-                     (t/send-search (db-get :search-query)
+                     (t/send-search (db-get :full-command)
                                     #(db-assoc :search-results %))))))))
          "Ctrl-S"
          (fn [cm-inst]
@@ -434,47 +544,6 @@
                                 (this-as this
                                   (j/get-in this [:props :children])))})))
 
-
-(defn update-child-opts [[tag x & more] f & args]
-  (into (if (map? x)
-          [tag (apply f x args)]
-          [tag (apply f {} args) x])
-        more))
-
-(defn clipboard-node []
-  [:textarea {:style {:position :absolute
-                      :left     -10000}
-              :ref   #(db-assoc ::clipboard-node %)}])
-
-(defn copy-to-clipboard [clipboard-text-fn on-copied]
-  #?(:cljs
-     (p/then
-      (clipboard-text-fn)
-      (fn [txt]
-        (on-copied)
-        (as-> (db-get ::clipboard-node) node
-              (j/assoc! node :value txt)
-              (j/call node :select)
-              (j/call js/document :execCommand "copy")
-              (j/assoc! node :value ""))))))
-
-(defn ->clipboard
-  ([clipboard-text-fn child] (->clipboard clipboard-text-fn child child))
-  ([clipboard-text-fn child on-copied-child]
-   (let [copied? (uix/state false)
-         child   (update-child-opts
-                  child assoc :on-click
-                  (fn [_]
-                    #?(:cljs
-                     (copy-to-clipboard
-                      clipboard-text-fn
-                      (fn []
-                        (reset! copied? true)
-                        (js/setTimeout #(reset! copied? false) 1000))))))]
-     (if-not @copied?
-       child
-       on-copied-child))))
-
 (defn exec-result->clipboard-text
   "Inlining this fn for the clipboard feature causes remounts on every render."
   []
@@ -512,7 +581,7 @@
                     (name r)]))
             (keys renderers))
       [->clipboard
-       exec-result->clipboard-text
+       exec-ent->clipboard-text
        [:i.far.fa-copy.ph1.gray.hover-black.pointer.f6]
        [:i.fas.fa-check.f6.ph1]]]
 
@@ -537,7 +606,7 @@
     [:div.flex.justify-between.items-center.pv2.ph3
      [:div.w3
       [logo]]
-     [search-input]
+     [command-input]
      [:div.w3.dn.di-ns
       [new-snippet-btn]]]
     [search-results]]

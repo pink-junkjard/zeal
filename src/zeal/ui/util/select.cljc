@@ -106,7 +106,6 @@
        :on-mouse-down  (fn [e]
                          (set-idx-from-item select item)
                          (on-item-pick item)
-                         (.preventDefault e)
                          (.stopPropagation e))})}))
 
 (defn- noop-handlers [ks]

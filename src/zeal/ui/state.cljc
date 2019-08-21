@@ -3,7 +3,8 @@
 
 (def ^:dynamic *init-state* {})
 
-(defonce db (atom (merge {:search-query ""}
+(defonce db (atom (merge {:full-command ""
+                          :search-query ""}
                          #?(:cljs (js->clj js/__initState :keywordize-keys true)))))
 
 (defn db-get [k]
