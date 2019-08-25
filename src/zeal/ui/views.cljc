@@ -1,7 +1,7 @@
 (ns zeal.ui.views
   (:require [uix.dom.alpha :as uix.dom]
             [uix.core.alpha :as uix]
-            [zeal.ui.state :as st :refer [<sub db-assoc db-assoc-in db-get db-get-in]]
+            [zeal.ui.state :as st :refer [<sub <get db-assoc db-assoc-in db-get db-get-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
             [clojure.string :as str]
@@ -109,7 +109,7 @@
   to work."
   [:textarea {:style {:position :absolute
                       :left     -10000}
-              :ref   #(db-assoc ::clipboard-node %)}])
+              :ref   #(st/add ::clipboard-node %)}])
 
 (defn copy-to-clipboard
   ([clipboard-text-fn] (copy-to-clipboard clipboard-text-fn (constantly nil)))
@@ -145,7 +145,7 @@
 (defn show-recent-results []
   (when (and (empty? (db-get :full-command)) (not (db-get :show-history?)))
     (t/send [:recent-exec-ents {:n 10}]
-            #(db-assoc :search-results %))
+            #(st/add :search-results %))
     true))
 
 (defn new-snippet-btn []
@@ -154,18 +154,19 @@
     :on-click #(do
                  (cm-set-value (db-get-in [:editor :snippet-cm]) new-snippet-text)
 
-                 (db-assoc :full-command ""
-                           :search-results nil
-                           :show-history? false
-                           :history nil
-                           :history-ent nil
-                           :exec-ent {:snippet new-snippet-text
-                                      :name    false}))}
+                 (st/add :full-command ""
+                         :search-results nil
+                         :show-history? false
+                         :history nil
+                         :history-ent nil
+                         :exec-ent {:snippet new-snippet-text
+                                    :name    false}))}
    "NEW"])
 
 (defn on-search-result-select [{:as exec-ent :keys [snippet]}]
-  (st/db-update :pre-select-exec-ent #(or % (db-get :exec-ent)))
-  (st/db-assoc :exec-ent exec-ent)
+  (st/add :pre-select-exec-ent (or (st/db-get :pre-select-exec-ent)
+                                   (db-get :exec-ent)))
+  (st/add :exec-ent exec-ent)
   ;; setting directly instead of syncing editor with st-value-fn
   ;; because when the editor value is reset on every change
   ;; the caret moves to index 0
@@ -174,24 +175,18 @@
 
 (defn on-search-result-pick [exec-ent]
   (on-search-result-select exec-ent)
-  (st/db-assoc :pre-select-exec-ent nil))
+  (st/add :pre-select-exec-ent nil))
 
 (defn on-search-results-unselect []
   (when-let [exec-ent (st/db-get :pre-select-exec-ent)]
     (on-search-result-select exec-ent)
-    (st/db-assoc :pre-select-exec-ent nil)))
+    (st/add :pre-select-exec-ent nil)))
 
 (def search-item-select
   (select/select {:on-item-select           on-search-result-select
                   :on-item-pick             on-search-result-pick
                   :on-unselect              on-search-results-unselect
                   :relative-container-level 2}))
-
-(defn results? []
-  (boolean
-   (if (db-get :show-history?)
-     (not-empty (db-get :history))
-     (not-empty (db-get :search-results)))))
 
 (def commands #{"-cb" ">" ">cb"})
 
@@ -200,7 +195,10 @@
   (re-pattern (str "\\s?(" (str/join "|" commands) ")+\\s*")))
 
 (defn sans-commands [s]
-  (not-empty (str/replace s commands-regex "")))
+  (some-> s
+          (str/replace commands-regex "")
+          not-empty
+          str/trim))
 
 (defn parse-command-input [s]
   (let [words    (into #{} (str/split s #" "))
@@ -223,18 +221,19 @@
   ([] (exec-exec-ent (constantly nil)))
   ([on-result] (exec-exec-ent (db-get :exec-ent) on-result))
   ([exec-ent on-result]
-   (t/send-eval!
-    (-> exec-ent
-        (update :snippet gstr/trim))
-    (fn [{:as m :keys [snippet]}]
-      (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
-      (db-assoc :exec-ent m)
-      (on-result exec-ent)
-      ;; TODO it's time for a normalized db!
-      (if (db-get :show-history?)
-        (t/history m #(db-assoc :history %))
-        (t/send-search (db-get :search-query)
-                       #(db-assoc :search-results %)))))))
+   #?(:cljs
+      (t/send-eval!
+       (-> exec-ent
+           (update :snippet gstr/trim))
+       (fn [{:as m :keys [snippet]}]
+         (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+         (st/add :exec-ent m)
+         (on-result exec-ent)
+         ;; TODO it's time for a normalized db!
+         (if (db-get :show-history?)
+           (t/history m #(st/add :history %))
+           (t/send-search (db-get :search-query)
+                          #(st/add :search-results %))))))))
 
 (defn execute-commands [exec-ent commands]
   (doseq [cmd commands]
@@ -250,8 +249,8 @@
       ">" (exec-exec-ent))))
 
 (defn command-input []
-  (let [full-command   (<sub :full-command)
-        search-results (<sub :search-results)
+  (let [full-command   (<get :full-command)
+        search-results (<get :search-results)
         {:keys [on-item-pick]} (search-item-select search-results)]
     [:div.flex
      [:input.outline-0.bn.br2.w5.f6.ph3.pv2.shadow-4.h2
@@ -267,40 +266,41 @@
                                       (execute-commands exec-ent commands)))
                       "escape"    #(do
                                      (on-search-results-unselect)
-                                     (db-assoc :search-results nil
-                                               :full-command ""
-                                               :show-history? false
-                                               :history nil
-                                               :history-ent nil))}))
+                                     (st/add :search-results nil
+                                             :full-command ""
+                                             :search-query ""
+                                             :show-history? false
+                                             :history nil
+                                             :history-ent nil))}))
        {:style     {:box-shadow    "rgba(0, 0, 0, 0.03) 0px 4px 3px 0px"
                     :padding-right 30}
-        :ref       #(db-assoc :search-node %)
+        :ref       #(st/add :search-node %)
         :value     full-command
         :on-focus  #(show-recent-results)
         :on-change (fn [e]
                      (let [full-query (.. e -target -value)
                            {:keys [query]} (parse-command-input full-query)]
-                       (db-assoc :full-command full-query)
-                       (db-assoc :search-query query)
+                       (st/add :full-command full-query)
+                       (st/add :search-query query)
                        (or (show-recent-results)
                            (if (db-get :show-history?)
-                             (t/history (db-get :history-ent) #(db-assoc :history %))
-                             (t/send-search query #(db-assoc :search-results %))))))})]
+                             (t/history (db-get :history-ent) #(st/add :history %))
+                             (t/send-search query #(st/add :search-results %))))))})]
      (when (or (not-empty full-command) (not-empty search-results))
        [:span.flex.items-center
         {:style {:margin-left -27}}
         [:i.fas.fa-times-circle.mh1.gray.hover-black
-         {:on-click #(st/db-assoc :search-results nil
-                                  :full-command ""
-                                  :search-query "")}]])]))
+         {:on-click #(st/add :search-results nil
+                             :full-command ""
+                             :search-query "")}]])]))
 
 (defn search-results []
-  (let [search-query     (<sub :search-query)
-        search-results   (<sub :search-results)
+  (let [search-query     (<get :search-query)
+        search-results   (<get :search-results)
         show-history?    (<sub :show-history?)
-        history          (<sub :history)
-        current-exec-ent (<sub (fn [db] (or (:pre-select-exec-ent db)
-                                            (:exec-ent db))))
+        history          (<get :history)
+        current-exec-ent (<sub (fn [db] (or (st/get* db :pre-select-exec-ent)
+                                            (st/get* db :exec-ent))))
         {:keys [item-handlers-fn parent-handlers]} search-item-select
         _                (<sub (:state search-item-select) identity) ; sub to rerender
         select-idx       @search-item-select
@@ -354,14 +354,8 @@
                                          :name       text}]
                          (fn [m]
                            (if (db-get :show-history?)
-                             (t/history m #(db-assoc :history %))
-                             (st/db-update :search-results
-                                           (fn [res]
-                                             (mapv (fn [{:as rm rid :crux.db/id}]
-                                                     (if (= rid id)
-                                                       m
-                                                       rm))
-                                                   res))))))))}
+                             (t/history m #(st/add :history %))
+                             (st/add m))))))}
             name-id-or-hash]
            [:pre.w-50.f6.ma0.ml3.self-center.overflow-hidden
             {:style {:white-space :pre-wrap
@@ -381,16 +375,18 @@
                          (if show-history?
                            (if (empty? search-query)
                              (t/send [:recent-exec-ents {:n 10}]
-                                     #(db-assoc :search-results %
-                                                :show-history? false))
+                                     #(do
+                                        (st/add :search-results %)
+                                        (db-assoc :show-history? false)))
                              (t/send-search search-query
-                                            #(db-assoc :search-results %
-                                                       :show-history? false)))
+                                            #(do
+                                               (st/add :search-results %)
+                                               (db-assoc :show-history? false))))
 
                            (t/history exec-ent
-                                      #(db-assoc :history %
-                                                 :history-ent exec-ent
-                                                 :show-history? true))))}]])]
+                                      #(st/add :history %
+                                               :history-ent exec-ent
+                                               :show-history? true))))}]])]
        show-no-results?
        "No results")]))
 
@@ -413,6 +409,7 @@
 
            assoc-dep-path
            (fn [v]
+             ;; fixme
              (db-assoc-in exec-ent-dep-result-path v))
 
            ents->cm-list
@@ -464,7 +461,7 @@
                            #(resolve (ents->cm-list %)))))))))
 
 (defn snippet-editor []
-  (let [snippet (<sub (comp :snippet :exec-ent))]
+  (let [snippet (:snippet (<get :exec-ent))]
     [:div.w-50.ba.b--light-gray.br2.overflow-hidden.bg-white.dn.db-ns
      [codemirror
       {;:class ["w-50"]
@@ -483,21 +480,21 @@
          (fn [_cm]
            #?(:cljs
               (do
-                (db-assoc :full-command ""
-                          :search-results nil
-                          :show-history? false
-                          :history nil
-                          :history-ent nil)
+                (st/add :full-command ""
+                        :search-results nil
+                        :show-history? false
+                        :history nil
+                        :history-ent nil)
                 (t/send-eval!
                  (-> (db-get :exec-ent)
                      (update :snippet gstr/trim))
                  (fn [{:as m :keys [snippet]}]
                    (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
-                   (db-assoc :exec-ent m)
+                   (st/add :exec-ent m)
                    (if (db-get :show-history?)
-                     (t/history m #(db-assoc :history %))
+                     (t/history m #(st/add :history %))
                      (t/send-search (db-get :full-command)
-                                    #(db-assoc :search-results %))))))))
+                                    #(st/add :search-results %))))))))
          "Ctrl-S"
          (fn [cm-inst]
            #?(:cljs
@@ -509,7 +506,7 @@
 
         :on-changes
         (fn [cm _]
-          (db-assoc-in [:exec-ent :snippet] (.getValue cm)))}}]]))
+          (st/add (assoc (db-get :exec-ent) :snippet (.getValue cm))))}}]]))
 
 (def renderers
   {:default   (fn [result]
@@ -557,8 +554,8 @@
          (db-get-in [:exec-ent :result])))))
 
 (defn exec-result []
-  (let [result         (<sub (comp :result :exec-ent))
-        rndr           (or (<sub (comp :renderer :exec-ent)) :default)
+  (let [{:keys [renderer result]} (<get :exec-ent)
+        rndr           (or renderer :default)
         renderer       (get renderers rndr)
         error-state    (uix/state nil)
         on-error       (fn [error] (reset! error-state error))
@@ -576,7 +573,7 @@
                                          {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
                                           :renderer   r}]
                                         (fn [m]
-                                          (db-assoc :exec-ent m)
+                                          (st/add :exec-ent m)
                                           (reset! error-state nil)))}
                     (name r)]))
             (keys renderers))
