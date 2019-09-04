@@ -87,7 +87,8 @@
   (merge
    (select-keys opts handler-ks)
    {:parent-handlers
-    {:on-mouse-leave (fn [_]
+    {:on-mouse-move  (fn [_] (swap! (:state select) assoc :mouse-active? true))
+     :on-mouse-leave (fn [_]
                        (clear-override-idx select)
                        (on-unselect))}
 
@@ -102,7 +103,9 @@
                                                  #js {:block  "nearest"
                                                       :inline "nearest"})))))
        :on-mouse-enter (fn [_]
-                         (set-override-idx-from-item select item))
+                         (when (-> select :state deref :mouse-active?)
+                           (set-override-idx-from-item select item)
+                           (swap! (:state select) assoc :mouse-active? false)))
        :on-mouse-down  (fn [e]
                          (set-idx-from-item select item)
                          (on-item-pick item)
@@ -113,13 +116,13 @@
 
 (defn select
   [{:as   opts
-    :keys [items item idx-atom override-idx]
-    :or   {idx-atom 0}}]
+    :keys [items item idx override-idx]
+    :or   {idx 0}}]
   (let [opts (merge (noop-handlers handler-ks) opts)
         sel  (map->Select (merge
                            opts
                            {:state (atom {:items        (vec items)
-                                          :idx          idx-atom
+                                          :idx          idx
                                           :override-idx override-idx})}))]
     (cond-> sel
       (and item (not override-idx)) (set-idx-from-item item)

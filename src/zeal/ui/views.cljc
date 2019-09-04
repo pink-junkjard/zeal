@@ -31,8 +31,8 @@
 #?(:cljs
    (global-shortcuts
     {"cmd+/" #(when (focus-search) false)
-     ;"cmd+shift+z" #(js/console.log "redo")
-     ;"cmd+z"       #(js/console.log "undo")
+     ;"cmd+shift+z" #(println "redo")
+     ;"cmd+z"       #(println "undo")
      }))
 
 (def new-snippet-text
