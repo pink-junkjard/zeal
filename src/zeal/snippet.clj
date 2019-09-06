@@ -4,7 +4,8 @@
    [clojure.string :as str]
    [zeal.db :as db]
    [zeal.state]
-   [zeal.eval.core :as eval])
+   [zeal.eval.core :as eval]
+   [zprint.core :as zp])
   (:import
    (java.util Date)))
 
@@ -60,6 +61,13 @@
        :crux.db/id
        (assoc ent :author)))
 
+(defn pretty-result-string [[evald-edn evald-str]]
+  (if evald-edn
+    (if (string? evald-edn)
+      evald-edn
+      (zp/zprint-str evald-edn 50))
+    evald-str))
+
 (defn eval-and-log-exec-ent! [{:keys [name snippet] :as exec-ent}]
   (let [exec-ent
         (-> exec-ent
@@ -70,7 +78,7 @@
             add-author)
         ret-exec-ent
         (try
-          (let [[evald-edn evald-str]
+          (let [[evald-edn evald-str :as eval-edn+str]
                 (-> snippet
                     eval/do-eval-string
                     valid-edn)
@@ -79,9 +87,7 @@
                 execd     (merge
                            exec-ent
                            {:result        (or evald-edn evald-str)
-                            :result-string (if (string? evald-edn)
-                                             false
-                                             evald-str)}
+                            :result-string (pretty-result-string eval-edn+str)}
                            edn-meta)]
             execd)
           (catch Exception e

@@ -67,7 +67,7 @@
       [f])))
 
 (defn normalize [coll]
-  (u/project-as-keys id-key (u/ensure-vec coll)))
+  (u/project-as-keys (sorted-map) id-key (u/ensure-vec coll)))
 
 ;; could spec this out instead
 (defn entity? [x]

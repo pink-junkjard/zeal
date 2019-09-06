@@ -188,11 +188,11 @@
                   :on-unselect              on-search-results-unselect
                   :relative-container-level 2}))
 
-(def commands #{"-cb" ">" ">cb"})
+(def possible-commands #{"-cb" ">" ">cb"})
 
 (def commands-regex
   "Matches commands and surrounding whitespace."
-  (re-pattern (str "\\s?(" (str/join "|" commands) ")+\\s*")))
+  (re-pattern (str "\\s?(" (str/join "|" possible-commands) ")+\\s*")))
 
 (defn sans-commands [s]
   (some-> s
@@ -202,7 +202,7 @@
 
 (defn parse-command-input [s]
   (let [words    (into #{} (str/split s #" "))
-        commands (not-empty (set/intersection commands words))]
+        commands (not-empty (set/intersection possible-commands words))]
     {:commands commands
      :query    (sans-commands s)}))
 
@@ -390,8 +390,6 @@
        show-no-results?
        "No results")]))
 
-(def exec-ent-dep-result-path [:exec-ent-dep :result])
-
 (defn deps-completion [cm-inst option]
   #?(:cljs
      (let [cursor
@@ -408,9 +406,8 @@
            (-> (j/get token :string) gstr/trim)
 
            assoc-dep-path
-           (fn [v]
-             ;; fixme
-             (db-assoc-in exec-ent-dep-result-path v))
+           (fn [id]
+             (st/add :exec-ent-dep id))
 
            ents->cm-list
            (fn [ents]
@@ -449,7 +446,7 @@
                     #(assoc-dep-path nil))
                (.on CodeMirror ret "select"
                     (fn [sel _]
-                      (assoc-dep-path (.-result sel))))
+                      (assoc-dep-path (uuid (.-id sel)))))
 
                ret))]
        (js/Promise.
@@ -509,19 +506,21 @@
           (st/add (assoc (db-get :exec-ent) :snippet (.getValue cm))))}}]]))
 
 (def renderers
-  {:default   (fn [result]
+  {:default   (fn [{:keys [result-string]}]
                 [codemirror
-                 {:default-value (str result)
-                  :st-value-fn   #(or
-                                   (get-in % exec-ent-dep-result-path)
-                                   (-> % :exec-ent :result))
+                 {:default-value result-string
+                  :st-value-fn   (fn [db]
+                                   (let [exec-ent (or
+                                                   (st/get* db :exec-ent-dep)
+                                                   (st/get* db :exec-ent))]
+                                     (:result-string exec-ent)))
                   :cm-opts       {:readOnly true}}])
-   :hiccup    (fn [result]
+   :hiccup    (fn [{:keys [result]}]
                 [:div
                  {:ref (fn [node]
                          (when node
                            (uix.dom/render result node)))}])
-   :vega-lite (fn [result]
+   :vega-lite (fn [{:keys [result]}]
                 [:div {:ref (fn [node]
                               (when node
                                 (vega/init-vega-lite
@@ -531,35 +530,39 @@
                                   :on-view  (fn [vega-view]
                                               (db-assoc :renderer-vega-view vega-view))})))}])})
 
-(defn error-boundary [on-error]
+(def error-boundary
   #?(:cljs
      (make-component
       "error-boundary"
-      #js {:componentDidCatch (fn [error info]
-                                (on-error {:error error :info info}))
-           :render            (fn []
-                                (this-as this
-                                  (j/get-in this [:props :children])))})))
+      #js {:componentDidUpdate (fn []
+                                 (this-as this
+                                   (reset! (j/get-in this [:props :errorState]) nil)))
+           :componentDidCatch  (fn [error info]
+                                 (this-as this
+                                   (reset! (j/get-in this [:props :errorState])
+                                           {:error error :info info})))
+           :render             (fn []
+                                 (this-as this
+                                   (when-not @(j/get-in this [:props :errorState])
+                                     (j/get-in this [:props :children]))))})))
 
 (defn exec-result->clipboard-text
   "Inlining this fn for the clipboard feature causes remounts on every render."
   []
   #?(:cljs
-     (let [renderer (db-get-in [:exec-ent :renderer])]
+     (let [{:keys [renderer result]} (:renderer (db-get :exec-ent))]
        (case renderer
          :vega-lite
          (let [vega-view (db-get :renderer-vega-view)]
            ; returns a promise
            (j/call vega-view :toSVG))
-         (db-get-in [:exec-ent :result])))))
+         result))))
 
 (defn exec-result []
-  (let [{:keys [renderer result]} (<get :exec-ent)
-        rndr           (or renderer :default)
-        renderer       (get renderers rndr)
-        error-state    (uix/state nil)
-        on-error       (fn [error] (reset! error-state error))
-        error-boundary (error-boundary on-error)]
+  (let [{:as exec-ent :keys [renderer]} (<get :exec-ent)
+        rndr        (or renderer :default)
+        renderer    (get renderers rndr)
+        error-state (uix/state nil)]
     [:div.w-50-ns.w-100.h-100.ml1.ba.b--light-gray.br2.bg-white
      [:div.flex.justify-between.items-center
       {:style {:background app-background}}
@@ -570,7 +573,7 @@
                     {:class    (when (= rndr r)
                                  "bg-black-10")
                      :on-click #(t/send [:merge-entity
-                                         {:crux.db/id (db-get-in [:exec-ent :crux.db/id])
+                                         {:crux.db/id (:crux.db/id (db-get :exec-ent))
                                           :renderer   r}]
                                         (fn [m]
                                           (st/add :exec-ent m)
@@ -583,11 +586,11 @@
        [:i.fas.fa-check.f6.ph1]]]
 
      [:div.overflow-scroll.h-100
-      (if-let [err (:error @error-state)]
+      (when-let [err (:error @error-state)]
         [:div.pa2.bg-washed-red
          (str "Error using renderer " rndr)
-         [:pre.break-all.prewrap (str err)]]
-        #?(:cljs [:> error-boundary [renderer result]]))]]))
+         [:pre.break-all.prewrap (str err)]])
+      #?(:cljs [:> error-boundary {:error-state error-state} [renderer exec-ent]])]]))
 
 (defn logo []
   [:span.f2.pl3
