@@ -1,7 +1,7 @@
 (ns zeal.ui.views
   (:require [uix.dom.alpha :as uix.dom]
             [uix.core.alpha :as uix]
-            [zeal.ui.state :as st :refer [<sub <get db-assoc db-assoc-in db-get db-get-in]]
+            [zeal.ui.state :as st :refer [<sub <get <get-in db-assoc db-assoc-in db-get db-get-in]]
             [clojure.core.async :refer [go go-loop <!]]
             [clojure.pprint :refer [pprint]]
             [clojure.string :as str]
@@ -100,7 +100,7 @@
                         :lineWrapping true
                         :lineNumbers  false}
                        cm-opts)))}
-      (dissoc props :cm-opts :st-value-fn :on-cm :parinfer?))
+      (dissoc props :cm-opts :st-value-fn :on-cm :parinfer? :default-value))
      (when-not @cm-init?
        [:pre.f6.ma0.break-all.prewrap default-value])]))
 
@@ -164,9 +164,10 @@
    "NEW"])
 
 (defn on-search-result-select [{:as exec-ent :keys [snippet]}]
-  (st/add :pre-select-exec-ent (or (st/db-get :pre-select-exec-ent)
+  (st/add :pre-select-exec-ent (or (db-get :pre-select-exec-ent)
                                    (db-get :exec-ent)))
-  (st/add :exec-ent exec-ent)
+  (st/add :exec-ent exec-ent
+          :exec-result-error-state nil)
   ;; setting directly instead of syncing editor with st-value-fn
   ;; because when the editor value is reset on every change
   ;; the caret moves to index 0
@@ -229,7 +230,6 @@
          (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
          (st/add :exec-ent m)
          (on-result exec-ent)
-         ;; TODO it's time for a normalized db!
          (if (db-get :show-history?)
            (t/history m #(st/add :history %))
            (t/send-search (db-get :search-query)
@@ -250,7 +250,10 @@
 
 (defn command-input []
   (let [full-command   (<get :full-command)
-        search-results (<get :search-results)
+        search-results (<sub (fn [db] (if
+                                       (:show-history? db)
+                                        (st/get* db :history)
+                                        (st/get* db :search-results))))
         {:keys [on-item-pick]} (search-item-select search-results)]
     [:div.flex
      [:input.outline-0.bn.br2.w5.f6.ph3.pv2.shadow-4.h2
@@ -297,7 +300,7 @@
 (defn search-results []
   (let [search-query     (<get :search-query)
         search-results   (<get :search-results)
-        show-history?    (<sub :show-history?)
+        show-history?    (<get :show-history?)
         history          (<get :history)
         current-exec-ent (<sub (fn [db] (or (st/get* db :pre-select-exec-ent)
                                             (st/get* db :exec-ent))))
@@ -503,54 +506,67 @@
 
         :on-changes
         (fn [cm _]
-          (st/add (assoc (db-get :exec-ent) :snippet (.getValue cm))))}}]]))
+          (st/add :exec-ent (assoc (db-get :exec-ent) :snippet (.getValue cm))))}}]]))
+
+(defn cm-renderer []
+  (let [result-string (<get-in [:exec-ent :result-string])]
+    [codemirror
+     {:default-value (str result-string)
+      :st-value-fn   (fn [db]
+                       (let [exec-ent (or
+                                       (st/get* db :exec-ent-dep)
+                                       (st/get* db :exec-ent))]
+                         (:result-string exec-ent)))
+      :cm-opts       {:readOnly true}}]))
+
+(defn hiccup-renderer []
+  (let [result (<get-in [:exec-ent :result])]
+    [:div
+     {:ref (fn [node]
+             (when node
+               (uix.dom/render result node)))}]))
+
+(defn vega-lite-renderer []
+  (let [result (<get-in [:exec-ent :result])]
+    [:div {:ref (fn [node]
+                  (when node
+                    (vega/init-vega-lite
+                     node
+                     {:spec     result
+                      :renderer :canvas
+                      :on-view  (fn [vega-view]
+                                  (db-assoc :renderer-vega-view vega-view))})))}]))
 
 (def renderers
-  {:default   (fn [{:keys [result-string]}]
-                [codemirror
-                 {:default-value result-string
-                  :st-value-fn   (fn [db]
-                                   (let [exec-ent (or
-                                                   (st/get* db :exec-ent-dep)
-                                                   (st/get* db :exec-ent))]
-                                     (:result-string exec-ent)))
-                  :cm-opts       {:readOnly true}}])
-   :hiccup    (fn [{:keys [result]}]
-                [:div
-                 {:ref (fn [node]
-                         (when node
-                           (uix.dom/render result node)))}])
-   :vega-lite (fn [{:keys [result]}]
-                [:div {:ref (fn [node]
-                              (when node
-                                (vega/init-vega-lite
-                                 node
-                                 {:spec     result
-                                  :renderer :canvas
-                                  :on-view  (fn [vega-view]
-                                              (db-assoc :renderer-vega-view vega-view))})))}])})
+  {:default   cm-renderer
+   :hiccup    hiccup-renderer
+   :vega-lite vega-lite-renderer})
+
+(defn <current-renderer []
+  (<sub (fn [db] (st/get-in* db [:exec-ent :renderer] :default))))
+
+(defn renderer []
+  (let [renderer (<current-renderer)]
+    [(get renderers renderer)]))
 
 (def error-boundary
   #?(:cljs
      (make-component
       "error-boundary"
-      #js {:componentDidUpdate (fn []
-                                 (this-as this
-                                   (reset! (j/get-in this [:props :errorState]) nil)))
-           :componentDidCatch  (fn [error info]
-                                 (this-as this
-                                   (reset! (j/get-in this [:props :errorState])
-                                           {:error error :info info})))
-           :render             (fn []
-                                 (this-as this
-                                   (when-not @(j/get-in this [:props :errorState])
-                                     (j/get-in this [:props :children]))))})))
+      #js {:componentDidCatch (fn [error info]
+                                (this-as this
+                                  (j/call-in this
+                                             [:props :onError]
+                                             {:error error :info info})))
+           :render            (fn []
+                                (this-as this
+                                  (j/get-in this [:props :children])))})))
 
 (defn exec-result->clipboard-text
   "Inlining this fn for the clipboard feature causes remounts on every render."
   []
   #?(:cljs
-     (let [{:keys [renderer result]} (:renderer (db-get :exec-ent))]
+     (let [{:keys [renderer result]} (db-get :exec-ent)]
        (case renderer
          :vega-lite
          (let [vega-view (db-get :renderer-vega-view)]
@@ -559,10 +575,10 @@
          result))))
 
 (defn exec-result []
-  (let [{:as exec-ent :keys [renderer]} (<get :exec-ent)
-        rndr        (or renderer :default)
-        renderer    (get renderers rndr)
-        error-state (uix/state nil)]
+  (let [rndr        (<current-renderer)
+        error-state (<get :exec-result-error-state)
+        on-error    (fn [err-info]
+                      (st/add :exec-result-error-state err-info))]
     [:div.w-50-ns.w-100.h-100.ml1.ba.b--light-gray.br2.bg-white
      [:div.flex.justify-between.items-center
       {:style {:background app-background}}
@@ -570,14 +586,15 @@
       (into [:div.flex]
             (map (fn [r]
                    [:div.pointer.pv1.ph2.br2.br--top.hover-bg-light-gray
-                    {:class    (when (= rndr r)
-                                 "bg-black-10")
-                     :on-click #(t/send [:merge-entity
-                                         {:crux.db/id (:crux.db/id (db-get :exec-ent))
-                                          :renderer   r}]
-                                        (fn [m]
-                                          (st/add :exec-ent m)
-                                          (reset! error-state nil)))}
+                    {:suppress-hydration-warning true
+                     :class                      (when (= rndr r)
+                                                   "bg-black-10")
+                     :on-click                   #(t/send [:merge-entity
+                                                           {:crux.db/id (:crux.db/id (db-get :exec-ent))
+                                                            :renderer   r}]
+                                                          (fn [m]
+                                                            (st/add :exec-ent m)
+                                                            (on-error nil)))}
                     (name r)]))
             (keys renderers))
       [->clipboard
@@ -586,11 +603,11 @@
        [:i.fas.fa-check.f6.ph1]]]
 
      [:div.overflow-scroll.h-100
-      (when-let [err (:error @error-state)]
+      (if-let [err (:error error-state)]
         [:div.pa2.bg-washed-red
          (str "Error using renderer " rndr)
-         [:pre.break-all.prewrap (str err)]])
-      #?(:cljs [:> error-boundary {:error-state error-state} [renderer exec-ent]])]]))
+         [:pre.break-all.prewrap (str err)]]
+        #?(:cljs [:> error-boundary {:on-error on-error} [renderer]]))]]))
 
 (defn logo []
   [:span.f2.pl3
