@@ -174,9 +174,13 @@
   (some-> (db-get-in [:editor :snippet-cm]) (cm-set-value snippet))
   (focus-search))
 
+(declare clear-command-input)
+
 (defn on-search-result-pick [exec-ent]
   (on-search-result-select exec-ent)
-  (st/add :pre-select-exec-ent nil))
+  (st/add :pre-select-exec-ent nil)
+  (clear-command-input)
+  (some-> (db-get-in [:editor :snippet-cm]) (.focus)))
 
 (defn on-search-results-unselect []
   (when-let [exec-ent (st/db-get :pre-select-exec-ent)]
@@ -248,6 +252,14 @@
                 focus-search)))
       ">" (exec-exec-ent))))
 
+(defn clear-command-input []
+  (st/add :search-results nil
+          :full-command ""
+          :search-query ""
+          :show-history? false
+          :history nil
+          :history-ent nil))
+
 (defn command-input []
   (let [full-command   (<get :full-command)
         search-results (<sub (fn [db] (if
@@ -266,15 +278,11 @@
                                           {:keys [commands]} (parse-command-input full-query)
                                           exec-ent   (select/selected search-item-select)]
                                       (on-item-pick exec-ent)
-                                      (execute-commands exec-ent commands)))
+                                      (execute-commands exec-ent commands)
+                                      (.preventDefault e)))
                       "escape"    #(do
                                      (on-search-results-unselect)
-                                     (st/add :search-results nil
-                                             :full-command ""
-                                             :search-query ""
-                                             :show-history? false
-                                             :history nil
-                                             :history-ent nil))}))
+                                     (clear-command-input))}))
        {:style     {:box-shadow    "rgba(0, 0, 0, 0.03) 0px 4px 3px 0px"
                     :padding-right 30}
         :ref       #(st/add :search-node %)
