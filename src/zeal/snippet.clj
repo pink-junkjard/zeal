@@ -28,7 +28,7 @@
                    :order-by '[[?t :desc]]})
         names    (filter :name res)
         no-names (remove :name res)]
-    (vec (concat names no-names))))
+    (concat names no-names)))
 
 ;;; eval
 
@@ -82,7 +82,7 @@
                 (-> exec-ent
                     eval/do-eval-exec-ent
                     valid-edn)
-                edn-meta  (some-> evald-edn meta (select-keys [:renderer]))
+                edn-meta  (some-> evald-edn meta (select-keys [:renderer :copy?]))
                 evald-edn (cond-> evald-edn (some? edn-meta) (with-meta nil))
                 execd     (merge
                            exec-ent

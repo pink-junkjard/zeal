@@ -31,8 +31,8 @@
   ;; once a minute
   #?(:clj nil
      :cljs
-     (do (add-device-location)
-         (js/setInterval add-device-location 6e4))))
+          (do (add-device-location)
+              (js/setInterval add-device-location 6e4))))
 
 (defn focus-search []
   (when-let [search-node (db-get :search-node)]
@@ -63,6 +63,10 @@
      (let [s (str s)]
        (when (not= (j/call cm :getValue) s)
          (j/call (j/get cm :doc) :setValue s)))))
+
+(defn cm-focus [cm]
+  #?(:cljs
+     (j/call cm :focus)))
 
 (defn init-parinfer [cm]
   #?(:cljs (pcm/init cm)))
@@ -187,11 +191,14 @@
 
 (declare clear-command-input)
 
-(defn on-search-result-pick [exec-ent]
-  (on-search-result-select exec-ent)
-  (st/add :pre-select-exec-ent nil)
-  (clear-command-input)
-  (some-> (db-get-in [:editor :snippet-cm]) (.focus)))
+(defn on-search-result-pick
+  ([exec-ent] (on-search-result-pick exec-ent true))
+  ([exec-ent clear-command-input?]
+   (on-search-result-select exec-ent)
+   (st/add :pre-select-exec-ent nil)
+   (when clear-command-input?
+     (clear-command-input)
+     (some-> (db-get-in [:editor :snippet-cm]) (.focus)))))
 
 (defn on-search-results-unselect []
   (when-let [exec-ent (st/db-get :pre-select-exec-ent)]
@@ -288,8 +295,8 @@
                                     (let [full-query (.. e -target -value)
                                           {:keys [commands]} (parse-command-input full-query)
                                           exec-ent   (select/selected search-item-select)]
-                                      (on-item-pick exec-ent)
                                       (execute-commands exec-ent commands)
+                                      (on-item-pick exec-ent (nil? commands))
                                       (.preventDefault e)))
                       "escape"    #(do
                                      (on-search-results-unselect)
@@ -507,8 +514,16 @@
                 (t/send-eval!
                  (-> (db-get :exec-ent)
                      (update :snippet gstr/trim))
-                 (fn [{:as m :keys [snippet]}]
-                   (cm-set-value (db-get-in [:editor :snippet-cm]) snippet)
+                 (fn [{:as m :keys [snippet copy?]}]
+                   (letfn [(editor-thunk []
+                             (let [cm (db-get-in [:editor :snippet-cm])]
+                               (cm-set-value cm snippet)
+                               (cm-focus cm)))]
+                     (if-not copy?
+                       (editor-thunk)
+                       (copy-to-clipboard
+                        #(exec-ent->clipboard-text m)
+                        editor-thunk)))
                    (st/add :exec-ent m)
                    (if (db-get :show-history?)
                      (t/history m #(st/add :history %))
@@ -562,7 +577,7 @@
    :vega-lite vega-lite-renderer})
 
 (defn <current-renderer []
-  #?(:clj :default
+  #?(:clj  :default
      :cljs (<sub (fn [db] (st/get-in* db [:exec-ent :renderer] :default)))))
 
 (defn renderer []
