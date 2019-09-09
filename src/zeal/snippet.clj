@@ -79,8 +79,8 @@
         ret-exec-ent
         (try
           (let [[evald-edn evald-str :as eval-edn+str]
-                (-> snippet
-                    eval/do-eval-string
+                (-> exec-ent
+                    eval/do-eval-exec-ent
                     valid-edn)
                 edn-meta  (some-> evald-edn meta (select-keys [:renderer]))
                 evald-edn (cond-> evald-edn (some? edn-meta) (with-meta nil))

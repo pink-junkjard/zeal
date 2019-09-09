@@ -1,6 +1,8 @@
 (ns zeal.ui.talk
   (:require
    [cognitect.transit :as t]
+   [zeal.ui.state :as st]
+   [medley.core :as md]
    #?@(:cljs
        [[cljs.core.async :as a :refer [go <!]]
         [cljs-http.client :as http]]))
@@ -23,7 +25,11 @@
         (cb body)))))
 
 (defn send-eval! [exec-ent cb]
-  (send [:eval-and-log (dissoc exec-ent :result)] cb))
+  (let [device-location (st/db-get :device-geolocation)]
+    (send [:eval-and-log
+           (-> exec-ent
+               (dissoc :result :result-string)
+               (md/assoc-some :device-location device-location))] cb)))
 
 (defn send-search [q cb]
   (send [:search {:q q}] cb))

@@ -8,6 +8,8 @@
   "Dynamic Deps
     - run `(add-lib 'clj-http {:mvn/version \"3.10.0\"})`")
 
+(def ^:dynamic *snippet*)
+
 (defn snippet-result [dep-str]
   (let [id (zeal.eval.util/dep-str->id dep-str)
         {:keys [result]} (zeal.db/entity id)]

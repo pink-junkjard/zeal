@@ -214,7 +214,8 @@
 (defn routes [{:as req :keys [uri]}]
   (let [handler
         (case uri
-          "/" (if-let [usr #_(user req) {:user/email "kalavox@gmail.com"}]
+          "/" (if-let [usr #_(user req) {:crux.db/id ::temp-user-id
+                                         :user/email "kalavox@gmail.com"}]
                 (index (assoc-in req [:session :user] usr))
                 auth/redirect)
           "/echo" echo-handler

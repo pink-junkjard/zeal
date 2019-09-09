@@ -12,6 +12,7 @@
             [zeal.ui.vega :as vega]
             [zeal.ui.util.select :as select]
             [zeal.util.react-js :refer [make-component]]
+            [zeal.ui.util.geolocation :as gl]
             #?@(:cljs [[den1k.shortcuts :as sc :refer [shortcuts global-shortcuts]]
                        [applied-science.js-interop :as j]
                        [goog.string :as gstr]])
@@ -22,6 +23,16 @@
                        ["parinfer-codemirror" :as pcm]])))
 
 (def app-background "hsla(27, 14%, 97%, 1)")
+
+(defn add-device-location []
+  (gl/location #(st/add :device-geolocation %)))
+
+(defonce geolocation-loop
+  ;; once a minute
+  #?(:clj nil
+     :cljs
+     (do (add-device-location)
+         (js/setInterval add-device-location 6e4))))
 
 (defn focus-search []
   (when-let [search-node (db-get :search-node)]
@@ -551,7 +562,8 @@
    :vega-lite vega-lite-renderer})
 
 (defn <current-renderer []
-  (<sub (fn [db] (st/get-in* db [:exec-ent :renderer] :default))))
+  #?(:clj :default
+     :cljs (<sub (fn [db] (st/get-in* db [:exec-ent :renderer] :default)))))
 
 (defn renderer []
   (let [renderer (<current-renderer)]
