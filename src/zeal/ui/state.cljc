@@ -67,7 +67,7 @@
       [f])))
 
 (defn normalize [coll]
-  (u/project-as-keys (array-map) id-fn (u/ensure-vec coll)))
+  (u/project-as-keys [] id-fn (u/ensure-vec coll)))
 
 ;; could spec this out instead
 (defn entity? [x]
@@ -90,7 +90,7 @@
        (let [normd       (normalize val-ent-or-ents)
              ref-or-refs (cond
                            entity? (id-fn val-ent-or-ents)
-                           entities? (-> normd keys vec))]
+                           entities? (->> normd (mapv first)))]
          (-> db
              (into normd)
              (assoc k ref-or-refs)))

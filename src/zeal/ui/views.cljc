@@ -349,8 +349,7 @@
         parent-handlers
         (for [[idx {:as           exec-ent
                     :keys         [time name snippet result result-string]
-                    :crux.db/keys [id content-hash]
-                    :crux.tx/keys [tx-id]}]
+                    :crux.db/keys [id content-hash]}]
               (map-indexed vector (if show-history?
                                     history
                                     search-results))
@@ -362,7 +361,7 @@
           [:div.flex.mv1.pointer.pv2.ph1.hide-child.code
            (merge
             (item-handlers-fn exec-ent idx)
-            {:key   (str name "-" id "-" tx-id)
+            {:key   (st/id-fn exec-ent)
              :style (merge {:max-height "4rem"}
                            (when current-exec-ent?
                              {:outline-color "gray"
@@ -543,9 +542,10 @@
           (st/add :exec-ent (assoc (db-get :exec-ent) :snippet (.getValue cm))))}}]]))
 
 (defn cm-renderer []
-  (let [result-string (<get-in [:exec-ent :result-string])]
+  (let [result        (<get-in [:exec-ent :result])
+        result-string (<get-in [:exec-ent :result-string])]
     [codemirror
-     {:default-value (str result-string)
+     {:default-value (str (or result-string result))
       :st-value-fn   (fn [db]
                        (let [exec-ent (or
                                        (st/get* db :exec-ent-dep)
