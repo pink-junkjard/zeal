@@ -66,13 +66,16 @@
          ffirst
          entity)))
 
-(defn history [eid]
-  (crux/history node eid))
+(defn history
+  ([eid] (history eid {}))
+  ([eid {:keys [n]}]
+   (cond->> (crux/history node eid)
+     n (take n))))
 
 (defn entity-history
   ([eid] (entity-history eid {:with-history-info? false}))
-  ([eid {:keys [with-history-info?]}]
-   (let [h (history eid)]
+  ([eid {:keys [with-history-info? n]}]
+   (let [h (history eid {:n n})]
      (for [{:as h-ent :keys [crux.tx/tx-time crux.db/id]} h]
        (cond-> (crux/entity (crux/db node tx-time tx-time) id)
          with-history-info? (merge (dissoc h-ent :crux.db/id)))))))

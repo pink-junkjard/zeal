@@ -9,6 +9,17 @@
   (-> (str set-ns \newline \newline s)
       load-string))
 
-(defn do-eval-exec-ent [{:as exec-ent :keys [snippet]}]
+(defn- takes-args? [f]
+  (->> f meta :arglists (some (comp pos? count)) boolean))
+
+(defn- fn-or-var-of-fn? [x]
+  (or (fn? x) (and (var? x) (fn? (var-get x)))))
+
+(defn do-eval-exec-ent [{:as exec-ent :keys [snippet args]}]
   (binding [sb/*snippet* exec-ent]
-   (do-eval-string snippet)))
+    (let [ret (do-eval-string snippet)]
+      (if-not (fn-or-var-of-fn? ret)
+        ret
+        (if (and args (takes-args? ret))
+          (ret args)
+          (ret))))))

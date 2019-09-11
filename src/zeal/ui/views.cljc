@@ -193,12 +193,15 @@
 
 (defn on-search-result-pick
   ([exec-ent] (on-search-result-pick exec-ent true))
-  ([exec-ent clear-command-input?]
+  ([exec-ent {:as opts :keys [clear-command-input? focus-editor? close-results?]}]
    (on-search-result-select exec-ent)
    (st/add :pre-select-exec-ent nil)
-   (when clear-command-input?
-     (clear-command-input)
-     (some-> (db-get-in [:editor :snippet-cm]) (.focus)))))
+   (when clear-command-input? (clear-command-input))
+   (when focus-editor? (some-> (db-get-in [:editor :snippet-cm]) cm-focus))
+   (when close-results? (st/add :search-results nil
+                                :show-history? false
+                                :history nil
+                                :history-ent nil))))
 
 (defn on-search-results-unselect []
   (when-let [exec-ent (st/db-get :pre-select-exec-ent)]
@@ -217,17 +220,58 @@
   "Matches commands and surrounding whitespace."
   (re-pattern (str "\\s?(" (str/join "|" possible-commands) ")+\\s*")))
 
-(defn sans-commands [s]
+(def args-regex #"\:\??[\w-]+\s\:?(\w+\s?)+")
+(def t "> hello :?arg1 5 :arg2 foo and more :a__ASAdsrg-3 meow :Ar_gthis4 :bar")
+
+(re-seq args-regex t)
+
+(def number-or-keyword-regex #"\:{1}\w+|[0-9]\.?")
+
+(defn parse-arg-val
+  "Reads keywords and numbers as edn and treats everything else as a string"
+  [[v & _ :as vals]]
+  (if (and (not-empty vals) (re-find number-or-keyword-regex v))
+    #?(:clj  (read-string v)
+       :cljs (cljs.reader/read-string v))
+    (do
+      #?(:cljs (js/console.log :va vals))
+      (str/trim (str/join " " vals)))))
+
+(defn parse-args
+  "parses \"> hello :?arg1 5 :arg2 foo :arg-3 meow and more :arg-this4 bar\"
+  into {:?arg1 5, :arg2 \"foo\", :arg-3 \"meow and more\", :arg-this4 \"bar\"}"
+  [s]
+  (when-let [matches (not-empty (re-seq args-regex s))]
+    matches
+    (not-empty
+     (into {}
+           (comp
+            (map first)
+            (map (fn [match] (str/split match #" ")))
+            (map (fn [[k & val-or-vals]]
+                   [(keyword (subs k 1)) ; remove colon
+                    (parse-arg-val val-or-vals)])))
+           matches))))
+
+(comment
+ (parse-args "> hello :?arg1 5 :arg2 foo and more :a__ASAdsrg-3 meow :Ar_gthis4 :bar")
+ )
+
+(defn parse-commands [s]
+  (when-let [words (not-empty (into #{} (str/split s #" ")))]
+    (not-empty (set/intersection possible-commands words))))
+
+(defn sans-commands+args [s]
   (some-> s
           (str/replace commands-regex "")
+          (str/replace args-regex "")
           not-empty
           str/trim))
 
 (defn parse-command-input [s]
-  (let [words    (into #{} (str/split s #" "))
-        commands (not-empty (set/intersection possible-commands words))]
-    {:commands commands
-     :query    (sans-commands s)}))
+  {:commands (parse-commands s)
+   :args     (parse-args s)
+   :query    (sans-commands+args s)})
 
 (defn exec-ent->clipboard-text
   ([] (exec-ent->clipboard-text (db-get :exec-ent)))
@@ -264,11 +308,12 @@
              #(exec-ent->clipboard-text exec-ent)
              focus-search)
       ">cb" (exec-exec-ent
+             exec-ent
              (fn [new-exec-ent]
                (copy-to-clipboard
                 #(exec-ent->clipboard-text new-exec-ent)
                 focus-search)))
-      ">" (exec-exec-ent))))
+      ">" (exec-exec-ent exec-ent (constantly nil)))))
 
 (defn clear-command-input []
   (st/add :search-results nil
@@ -293,10 +338,12 @@
                       "arrowup"   #(do (select/previous search-item-select) false)
                       "enter"     (fn [e]
                                     (let [full-query (.. e -target -value)
-                                          {:keys [commands]} (parse-command-input full-query)
+                                          {:keys [args commands]} (parse-command-input full-query)
                                           exec-ent   (select/selected search-item-select)]
-                                      (execute-commands exec-ent commands)
-                                      (on-item-pick exec-ent (nil? commands))
+                                      (execute-commands (assoc exec-ent :args args) commands)
+                                      (on-item-pick exec-ent {:close-results?       (some? args)
+                                                              :focus-editor?        (and (nil? commands) (nil? args))
+                                                              :clear-command-input? (nil? commands)})
                                       (.preventDefault e)))
                       "escape"    #(do
                                      (on-search-results-unselect)
@@ -308,7 +355,7 @@
         :on-focus  #(show-recent-results)
         :on-change (fn [e]
                      (let [full-query (.. e -target -value)
-                           {:keys [query]} (parse-command-input full-query)]
+                           {:as prsd :keys [query]} (parse-command-input full-query)]
                        (st/add :full-command full-query)
                        (st/add :search-query query)
                        (or (show-recent-results)
@@ -512,6 +559,7 @@
                         :history-ent nil)
                 (t/send-eval!
                  (-> (db-get :exec-ent)
+                     (dissoc :args)
                      (update :snippet gstr/trim))
                  (fn [{:as m :keys [snippet copy?]}]
                    (letfn [(editor-thunk []
@@ -550,7 +598,8 @@
                        (let [exec-ent (or
                                        (st/get* db :exec-ent-dep)
                                        (st/get* db :exec-ent))]
-                         (:result-string exec-ent)))
+                         (or (:result-string exec-ent)
+                             (:result exec-ent))))
       :cm-opts       {:readOnly true}}]))
 
 (defn hiccup-renderer []

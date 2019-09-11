@@ -28,7 +28,7 @@
                    :order-by '[[?t :desc]]})
         names    (filter :name res)
         no-names (remove :name res)]
-    (concat names no-names)))
+    (vec (concat names no-names))))
 
 ;;; eval
 
@@ -94,7 +94,8 @@
             ;; Return error as string
             (merge
              exec-ent
-             {:result (pr-str e)})))]
+             {:result        (pr-str e)
+              :result-string false})))]
     (db/put! [ret-exec-ent] {:blocking? true})
     ret-exec-ent))
 

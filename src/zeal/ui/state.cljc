@@ -1,6 +1,7 @@
 (ns zeal.ui.state
   (:require [uix.core.alpha :as uix]
-            [zeal.util :as u]))
+            [zeal.util :as u]
+            [zeal.ui.util.dom :as u.dom]))
 
 (def ^:dynamic *init-state* {})
 
@@ -9,9 +10,11 @@
    (cond-> (str id)
      tx-id (str "__" tx-id))))
 
-(defonce db (atom (merge {:full-command ""
-                          :search-query ""}
-                         #?(:cljs (js->clj js/__initState :keywordize-keys true)))))
+(defonce db
+  (atom (merge {:full-command   ""
+                :search-query   ""
+                :device/mobile? (u.dom/mobile-device?)}
+               #?(:cljs (js->clj js/__initState :keywordize-keys true)))))
 
 (defn db-assoc [& args]
   (apply swap! db assoc args))

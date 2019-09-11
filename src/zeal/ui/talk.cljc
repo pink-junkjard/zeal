@@ -2,7 +2,7 @@
   (:require
    [cognitect.transit :as t]
    [zeal.ui.state :as st]
-   [medley.core :as md]
+   [clojure.set :as set]
    #?@(:cljs
        [[cljs.core.async :as a :refer [go <!]]
         [cljs-http.client :as http]]))
@@ -24,12 +24,21 @@
                                   {:transit-params dispatch-vec})))]
         (cb body)))))
 
+(defn device-meta []
+  (let [location (some-> (st/db-get :device-geolocation)
+                         (set/rename-keys
+                          {:latitude  :device-location/latitude
+                           :longitude :device-location/longitude}))]
+
+    (merge
+     location
+     (select-keys @st/db [:device/mobile?]))))
+
 (defn send-eval! [exec-ent cb]
-  (let [device-location (st/db-get :device-geolocation)]
-    (send [:eval-and-log
-           (-> exec-ent
-               (dissoc :result :result-string)
-               (md/assoc-some :device-location device-location))] cb)))
+  (send [:eval-and-log
+         (-> exec-ent
+             (dissoc :result :result-string)
+             (into (device-meta)))] cb))
 
 (defn send-search [q cb]
   (send [:search {:q q}] cb))
