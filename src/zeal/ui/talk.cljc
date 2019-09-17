@@ -3,6 +3,8 @@
    [cognitect.transit :as t]
    [zeal.ui.state :as st]
    [clojure.set :as set]
+   [kitchen-async.promise :as p]
+   [zeal.ui.util.dom :as u.dom]
    #?@(:cljs
        [[cljs.core.async :as a :refer [go <!]]
         [cljs-http.client :as http]]))
@@ -25,20 +27,22 @@
         (cb body)))))
 
 (defn device-meta []
-  (let [location (some-> (st/db-get :device-geolocation)
-                         (set/rename-keys
-                          {:latitude  :device-location/latitude
-                           :longitude :device-location/longitude}))]
-
+  (p/let [location       (some-> (st/db-get :device-geolocation)
+                                 (set/rename-keys
+                                  {:latitude  :device-location/latitude
+                                   :longitude :device-location/longitude}))
+          clipboard-text (u.dom/read-clipboard-promise)]
     (merge
      location
+     {:device/clipboard-text clipboard-text}
      (select-keys @st/db [:device/mobile?]))))
 
 (defn send-eval! [exec-ent cb]
-  (send [:eval-and-log
-         (-> exec-ent
-             (dissoc :result :result-string)
-             (into (device-meta)))] cb))
+  (p/let [device-meta (device-meta)]
+    (send [:eval-and-log
+           (-> exec-ent
+               (dissoc :result :result-string)
+               (into device-meta))] cb)))
 
 (defn send-search [q cb]
   (send [:search {:q q}] cb))

@@ -13,6 +13,7 @@
             [zeal.ui.util.select :as select]
             [zeal.util.react-js :refer [make-component]]
             [zeal.ui.util.geolocation :as gl]
+            [zeal.ui.util.dom :as u.dom]
             #?@(:cljs [[den1k.shortcuts :as sc :refer [shortcuts global-shortcuts]]
                        [applied-science.js-interop :as j]
                        [goog.string :as gstr]])
@@ -119,27 +120,6 @@
      (when-not @cm-init?
        [:pre.f6.ma0.break-all.prewrap default-value])]))
 
-(defn clipboard-node []
-  "This component must be rendered in the app tree for clipboard functionality
-  to work."
-  [:textarea {:style {:position :absolute
-                      :left     -10000}
-              :ref   #(st/add ::clipboard-node %)}])
-
-(defn copy-to-clipboard
-  ([clipboard-text-fn] (copy-to-clipboard clipboard-text-fn (constantly nil)))
-  ([clipboard-text-fn on-copied]
-   #?(:cljs
-      (p/then
-       (clipboard-text-fn)
-       (fn [txt]
-         (as-> (db-get ::clipboard-node) node
-               (j/assoc! node :value txt)
-               (j/call node :select)
-               (j/call js/document :execCommand "copy")
-               (j/assoc! node :value ""))
-         (on-copied))))))
-
 (defn ->clipboard
   ([clipboard-text-fn child] (->clipboard clipboard-text-fn child child))
   ([clipboard-text-fn child on-copied-child]
@@ -148,7 +128,7 @@
                   child assoc :on-click
                   (fn [_]
                     #?(:cljs
-                       (copy-to-clipboard
+                       (u.dom/copy-to-clipboard
                         clipboard-text-fn
                         (fn []
                           (reset! copied? true)
@@ -233,9 +213,7 @@
   (if (and (not-empty vals) (re-find number-or-keyword-regex v))
     #?(:clj  (read-string v)
        :cljs (cljs.reader/read-string v))
-    (do
-      #?(:cljs (js/console.log :va vals))
-      (str/trim (str/join " " vals)))))
+    (str/trim (str/join " " vals))))
 
 (defn parse-args
   "parses \"> hello :?arg1 5 :arg2 foo :arg-3 meow and more :arg-this4 bar\"
@@ -304,13 +282,13 @@
 (defn execute-commands [exec-ent commands]
   (doseq [cmd commands]
     (case cmd
-      "-cb" (copy-to-clipboard
+      "-cb" (u.dom/copy-to-clipboard
              #(exec-ent->clipboard-text exec-ent)
              focus-search)
       ">cb" (exec-exec-ent
              exec-ent
              (fn [new-exec-ent]
-               (copy-to-clipboard
+               (u.dom/copy-to-clipboard
                 #(exec-ent->clipboard-text new-exec-ent)
                 focus-search)))
       ">" (exec-exec-ent exec-ent (constantly nil)))))
@@ -568,7 +546,7 @@
                                (cm-focus cm)))]
                      (if-not copy?
                        (editor-thunk)
-                       (copy-to-clipboard
+                       (u.dom/copy-to-clipboard
                         #(exec-ent->clipboard-text m)
                         editor-thunk)))
                    (st/add :exec-ent m)
@@ -702,7 +680,6 @@
 (defn app []
   [:main.app.h-100.flex.flex-column.overflow-hidden
    {:style {:background app-background}}
-   [clipboard-node]
    [:div
     [:div.flex.justify-between.items-center.pv2.ph3
      [:div.w3

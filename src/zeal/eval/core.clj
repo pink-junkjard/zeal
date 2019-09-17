@@ -20,6 +20,9 @@
     (let [ret (do-eval-string snippet)]
       (if-not (fn-or-var-of-fn? ret)
         ret
-        (if (and args (takes-args? ret))
-          (ret args)
-          (ret))))))
+        (let [takes-args? (takes-args? ret)]
+          (println args takes-args?)
+          (cond
+            (and args takes-args?) (ret args)
+            takes-args? (var-get ret)
+            :else (ret)))))))
